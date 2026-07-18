@@ -16,6 +16,8 @@ For the MVP, the pipeline supports:
 
 The pipeline is designed to produce answers grounded in the user's repository rather than relying on general model knowledge alone.
 
+**Related documentation:** [Architecture Overview](ARCHITECTURE.md#overview) · [Database Schema](DATABASE_SCHEMA.md#overview) · [Roadmap](ROADMAP.md#codecontext-roadmap)
+
 ---
 
 # Pipeline Flow
@@ -51,9 +53,9 @@ LLM Generation
 v
 Response with File References
 
-**Ingestion path (indexing):** When a repository is uploaded, the system discovers supported files, parses their contents, splits them into chunks, generates embeddings, and stores the results in PostgreSQL with pgvector.
+**Ingestion path (indexing):** When a repository is uploaded, the system discovers supported files, parses their contents, splits them into chunks, generates embeddings, and stores the results in [PostgreSQL with pgvector](DATABASE_SCHEMA.md#database-technology).
 
-**Query path (question answering):** When a user asks a question, the system converts the question into an embedding, retrieves similar code chunks from the vector store, assembles a focused context window, sends that context to the LLM, and returns a response that references the source files used.
+**Query path (question answering):** When a user asks a question, the system converts the question into an embedding, retrieves similar [code chunks](DATABASE_SCHEMA.md#code-chunk) from the vector store, assembles a focused context window, sends that context to the LLM, and returns a response that references the source files used.
 
 These two paths are intentionally separate. Indexing work is performed once per repository (or incrementally when files change), while retrieval and generation run on each user question.
 
@@ -80,7 +82,7 @@ Not every file in a repository is useful for code understanding. The initial sup
 - JSON
 - Configuration files
 
-Files outside this set may be ignored during early phases. Each accepted file should retain metadata such as its relative path, file type, and size, which supports later chunking, retrieval, and source referencing.
+Files outside this set may be ignored during early phases. Each accepted file should retain metadata such as its relative path, file type, and size, which supports later chunking, retrieval, and source referencing. See the [File entity](DATABASE_SCHEMA.md#file).
 
 ## Why source code needs specialized handling
 
@@ -126,7 +128,7 @@ The goal of parsing is to identify units that a developer would recognize as mea
 - Configuration blocks
 - Documentation sections
 
-Extracting these units makes downstream chunking, embedding, and retrieval more accurate. Even when the MVP uses simpler parsing initially, the pipeline should preserve file paths and structural hints so chunks remain traceable back to their source.
+Extracting these units makes downstream [chunking](#chunking-strategy), [embedding](#embeddings), and [retrieval](#vector-retrieval) more accurate. Even when the MVP uses simpler parsing initially, the pipeline should preserve file paths and structural hints so chunks remain traceable back to their source.
 
 ---
 
@@ -164,7 +166,7 @@ The MVP can start with pragmatic strategies and refine them over time. Planned a
 - **Whole-file chunks for small files:** Short configuration or documentation files may be indexed as a single chunk.
 - **Path and type hints in metadata:** Store file path and language with every chunk so retrieval results remain interpretable.
 
-Chunking strategy directly affects search quality and should be treated as a core design decision, not a formatting detail.
+Chunking strategy directly affects search quality and should be treated as a core design decision, not a formatting detail. Persisted chunks are modeled as [Code Chunk](DATABASE_SCHEMA.md#code-chunk) records.
 
 ---
 
@@ -186,7 +188,7 @@ Instead of searching for precise strings, the system can find conceptually relat
 
 ## How they enable semantic search
 
-During indexing, each chunk embedding is stored alongside its source metadata in PostgreSQL with pgvector. During querying, the user's question is embedded using the same model family, and the system searches for the nearest chunk vectors.
+During indexing, each chunk embedding is stored alongside its source metadata in [PostgreSQL with pgvector](DATABASE_SCHEMA.md#pgvector). During querying, the user's question is embedded using the same model family, and the system searches for the nearest chunk vectors. See the [Embedding entity](DATABASE_SCHEMA.md#embedding).
 
 Semantic search is the bridge between free-form developer questions and the indexed contents of a repository.
 
@@ -234,7 +236,7 @@ The LLM layer is responsible for turning retrieved fragments into a coherent exp
 
 ## Why responses should be grounded in repository information
 
-Grounding is a core design principle of CodeContext. Answers should reflect what is actually present in the uploaded repository rather than generic assumptions about how projects are usually built.
+Grounding is a core design principle of CodeContext. Answers should reflect what is actually present in the uploaded repository rather than generic assumptions about how projects are usually built. See also [Grounded Responses](ARCHITECTURE.md#grounded-responses).
 
 Grounded responses are more trustworthy for developers exploring unfamiliar codebases. They reduce hallucinated file paths, invented functions, and misleading architectural claims.
 
@@ -258,7 +260,7 @@ The pipeline is designed with cost efficiency in mind from the start. Several st
 
 ## Reusing embeddings
 
-Embeddings are generated during indexing and stored in the database. Once a file chunk has been embedded, that vector should be reused until the underlying content changes. Re-embedding unchanged code on every query would add avoidable cost and latency.
+Embeddings are generated during indexing and stored in the [database](DATABASE_SCHEMA.md#embedding). Once a file chunk has been embedded, that vector should be reused until the underlying content changes. Re-embedding unchanged code on every query would add avoidable cost and latency.
 
 ## Caching responses
 
@@ -270,7 +272,7 @@ Retrieval and context assembly exist primarily to limit prompt size. The LLM sho
 
 ## Using smaller models when possible
 
-Not every task requires the largest available model. The architecture supports swapping providers and model sizes so simpler operations can use lower-cost models where appropriate, while more complex explanations can use more capable ones. Model selection is a future optimization lever, but the pipeline should remain provider-agnostic from the start.
+Not every task requires the largest available model. The [architecture supports swapping providers](ARCHITECTURE.md#modularity) and model sizes so simpler operations can use lower-cost models where appropriate, while more complex explanations can use more capable ones. Model selection is a future optimization lever, but the pipeline should remain provider-agnostic from the start.
 
 ---
 
@@ -292,7 +294,7 @@ A graph of imports, module dependencies, and file relationships could help retri
 
 ## Background indexing jobs
 
-As repositories grow or change, indexing can move to background workers so uploads and re-indexing do not block the API or frontend. This supports better scalability beyond the initial synchronous MVP flow.
+As repositories grow or change, indexing can move to background workers so uploads and re-indexing do not block the API or frontend. This supports better scalability beyond the initial synchronous MVP flow. See [Indexing jobs](DATABASE_SCHEMA.md#indexing-jobs) in the schema future considerations.
 
 ## Multiple LLM providers
 

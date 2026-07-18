@@ -6,6 +6,8 @@ CodeContext is an AI-powered codebase assistant that helps developers understand
 
 The application analyzes source code repositories, creates a searchable knowledge base using embeddings and vector search, and uses a Large Language Model (LLM) to answer questions about the codebase with relevant file references.
 
+**Related documentation:** [AI Pipeline](AI_PIPELINE.md#overview) · [Database Schema](DATABASE_SCHEMA.md#overview) · [Roadmap](ROADMAP.md#codecontext-roadmap) · [Project Status](PROJECT_STATUS.md#project-status)
+
 ---
 
 # System Architecture
@@ -73,7 +75,7 @@ Responsibilities:
 
 ## Repository Processing Pipeline
 
-The repository pipeline converts source code into searchable knowledge.
+The [repository ingestion pipeline](AI_PIPELINE.md#repository-ingestion) converts source code into searchable knowledge.
 
 Responsibilities:
 - Read uploaded repositories
@@ -99,6 +101,8 @@ Technology:
 - PostgreSQL
 - pgvector
 
+See [Database Technology](DATABASE_SCHEMA.md#database-technology) for why relational metadata and vectors are stored together.
+
 Responsibilities:
 - Store code embeddings
 - Perform semantic similarity searches
@@ -107,6 +111,8 @@ Responsibilities:
 ---
 
 ## LLM Layer
+
+See [LLM Response Generation](AI_PIPELINE.md#llm-response-generation) and [Conversation entities](DATABASE_SCHEMA.md#conversation) for how responses and chat history are handled.
 
 Responsibilities:
 - Understand retrieved code context
@@ -123,17 +129,19 @@ Examples:
 
 # AI Pipeline
 
+See [AI Pipeline](AI_PIPELINE.md#pipeline-flow) for the full system design.
+
 1. User asks a question
 
-2. System converts the question into an embedding
+2. System converts the question into an [embedding](AI_PIPELINE.md#embeddings)
 
-3. Vector search finds relevant code chunks
+3. [Vector search](AI_PIPELINE.md#vector-retrieval) finds relevant [code chunks](DATABASE_SCHEMA.md#code-chunk)
 
 4. Retrieved code context is sent to the LLM
 
-5. LLM generates a grounded response
+5. LLM generates a [grounded response](AI_PIPELINE.md#llm-response-generation)
 
-6. Response includes references to relevant files
+6. Response includes [references to relevant files](AI_PIPELINE.md#llm-response-generation)
 
 ---
 
@@ -141,11 +149,11 @@ Examples:
 
 ## Grounded Responses
 
-The AI should answer using information retrieved from the user's codebase rather than relying only on general knowledge.
+The AI should answer using information retrieved from the user's codebase rather than relying only on general knowledge. See [LLM Response Generation](AI_PIPELINE.md#llm-response-generation).
 
 ## Cost Efficiency
 
-Reduce unnecessary LLM usage through:
+Reduce unnecessary LLM usage through strategies described in [Cost Optimization](AI_PIPELINE.md#cost-optimization):
 - Embedding reuse
 - Response caching
 - Efficient retrieval
@@ -157,9 +165,9 @@ AI providers, embedding models, and retrieval systems should be replaceable with
 
 ## Incremental Development
 
-Build the system in stages:
-1. Repository ingestion
-2. Code indexing
-3. Semantic search
-4. AI-powered explanations
-5. Advanced developer tools
+Build the system in stages defined in the [Roadmap](ROADMAP.md#codecontext-roadmap):
+1. [Repository ingestion](ROADMAP.md#phase-1-repository-ingestion)
+2. [Code indexing](ROADMAP.md#phase-2-code-indexing)
+3. [Semantic search](ROADMAP.md#phase-3-semantic-search)
+4. [AI-powered explanations](ROADMAP.md#phase-4-ai-powered-explanations)
+5. [Advanced developer tools](ROADMAP.md#phase-5-advanced-developer-tools)
