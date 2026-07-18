@@ -1,0 +1,284 @@
+# =============================================================================
+# CodeContext — Root .gitignore
+# Monorepo: Next.js frontend, FastAPI backend, PostgreSQL/pgvector, Docker, AI
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Frontend (Next.js + TypeScript)
+# -----------------------------------------------------------------------------
+
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
+
+# Next.js
+.next/
+out/
+dist/
+build/
+
+# Production / static export artifacts
+*.tsbuildinfo
+
+# TypeScript
+.tscache/
+tsconfig.tsbuildinfo
+
+# Frontend tooling caches
+.eslintcache
+.stylelintcache
+.parcel-cache/
+.turbo/
+.vercel/
+
+# Frontend test / coverage output
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+
+# -----------------------------------------------------------------------------
+# Backend (FastAPI + Python)
+# -----------------------------------------------------------------------------
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+.python-version.local
+
+# Byte-compiled / optimized / compiled Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.pyd
+*.pyo
+
+# Distribution / packaging
+*.egg
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+build/
+dist/
+*.manifest
+*.spec
+wheels/
+share/python-wheels/
+
+# Testing
+.pytest_cache/
+.tox/
+.nox/
+.hypothesis/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+*.py,cover
+nosetests.xml
+.cache/
+
+# Type checkers / linters
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pytype/
+.ruff_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# pyenv / pipenv / poetry local state
+.pipenv
+Pipfile.lock.local
+
+# -----------------------------------------------------------------------------
+# Environment, secrets, and credentials
+# -----------------------------------------------------------------------------
+
+# Environment files
+.env
+.env.*
+!.env.example
+!.env*.example
+
+# Secrets and keys
+secrets/
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+id_rsa
+id_rsa.*
+*.secret
+credentials.json
+service-account*.json
+*.credentials
+
+# -----------------------------------------------------------------------------
+# Development tools and editors
+# -----------------------------------------------------------------------------
+
+# VS Code
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json.example
+!.vscode/launch.json.example
+!.vscode/tasks.json.example
+
+# Cursor
+.cursor/*
+!.cursor/rules/
+!.cursor/skills/
+
+# JetBrains / other IDEs
+.idea/
+*.iml
+*.ipr
+*.iws
+.project
+.classpath
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# -----------------------------------------------------------------------------
+# Operating system files
+# -----------------------------------------------------------------------------
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+
+# -----------------------------------------------------------------------------
+# Docker and local infrastructure
+# -----------------------------------------------------------------------------
+
+# Local Docker volumes and bind-mount data
+docker-data/
+.docker-data/
+volumes/
+.docker/volumes/
+
+# Generated PostgreSQL / pgvector data (local dev only)
+postgres-data/
+pgdata/
+*.sql.backup
+*.dump
+*.sql.gz
+
+# Docker override files with local-only settings
+docker-compose.override.yml
+docker-compose.*.local.yml
+
+# -----------------------------------------------------------------------------
+# AI, indexing, and generated data (CodeContext-specific)
+# -----------------------------------------------------------------------------
+
+# Uploaded / cloned repositories for indexing
+data/uploads/
+data/repositories/
+data/repos/
+uploads/
+repositories/
+
+# Generated embeddings and vector artifacts
+data/embeddings/
+data/vectors/
+data/index/
+embeddings/
+vectors/
+*.embedding
+*.embeddings
+*.faiss
+*.hnsw
+
+# Local vector database snapshots and exports
+data/pgvector/
+data/db/
+*.pgdump
+
+# Cached LLM responses and prompt artifacts
+data/cache/
+data/llm-cache/
+cache/llm/
+*.llm-cache
+
+# Pipeline and ingestion generated output
+data/generated/
+data/processed/
+data/chunks/
+generated/
+.tmp/
+tmp/
+temp/
+
+# Model downloads and local weights (if cached locally)
+models/
+*.bin
+*.safetensors
+*.onnx
+*.gguf
+
+# Large or binary artifacts from indexing runs
+*.sqlite
+*.sqlite3
+*.db
+!**/migrations/**/*.db
+
+# Logs from ingestion, search, and AI services
+logs/
+*.log
+
+# -----------------------------------------------------------------------------
+# Miscellaneous
+# -----------------------------------------------------------------------------
+
+# Local-only config overrides
+*.local
+*.local.*
+
+# Archives (often used for repo uploads during dev)
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rar
+*.7z
+
+# Swap and backup files
+*.swp
+*.swo
+*.bak
+*.orig
