@@ -2,15 +2,13 @@
 
 ## Overview
 
-The database is the persistent foundation for CodeContext. It stores everything the application needs to transform uploaded repositories into searchable knowledge and to support question-and-answer interactions over that knowledge.
+Persistent storage for CodeContext across three responsibilities:
 
-CodeContext uses the database for three primary responsibilities:
+1. **Repository indexing** — projects, files, chunks, embeddings
+2. **Semantic search** — vector storage and nearest-neighbor retrieval
+3. **Conversations** — chat history scoped to a project
 
-1. **Repository indexing** — Track uploaded projects, discovered files, parsed chunks, and generated embeddings.
-2. **Semantic search** — Store vector representations and retrieve relevant code sections when users ask questions.
-3. **Conversations** — Persist chat history so users can review prior questions and AI responses within the context of a project.
-
-The schema is designed around the MVP workflow: upload a repository, index supported files, search semantically, ask questions, and receive grounded answers with file references. It intentionally avoids premature complexity such as user accounts, repository versioning, or background job orchestration, while leaving room for those additions later.
+MVP workflow: upload → index → search → ask questions → grounded answers with file references. No user accounts, versioning, or job orchestration in MVP—room left for later.
 
 **Related documentation:** [Architecture Overview](ARCHITECTURE.md#overview) · [AI Pipeline](AI_PIPELINE.md#overview) · [Roadmap](ROADMAP.md#codecontext-roadmap)
 
@@ -20,278 +18,124 @@ The schema is designed around the MVP workflow: upload a repository, index suppo
 
 ## PostgreSQL
 
-PostgreSQL is the primary relational database for CodeContext. It provides durable storage, structured relationships, transactional integrity, and mature tooling for application development.
-
-CodeContext needs more than vector search alone. The system must persist hierarchical repository data (projects, files, chunks), conversation history, indexing status, and metadata used for source references. A relational database fits this model naturally and supports consistent queries across ingestion, retrieval, and chat features.
+Primary relational store for hierarchical repo data, conversation history, indexing status, and source-reference metadata.
 
 ## pgvector
 
-pgvector extends PostgreSQL with vector similarity search. CodeContext uses it to store embeddings and perform nearest-neighbor retrieval over code chunks.
-
-Semantic search is central to the MVP. When a user asks a question, the system embeds the question and compares it against stored chunk embeddings to find the most relevant source material. pgvector allows this workflow to run in the same database as the rest of the application data. See [Vector Retrieval](AI_PIPELINE.md#vector-retrieval) and the [Vector Database component](ARCHITECTURE.md#vector-database).
+Vector similarity search over code chunk embeddings. Question embeddings are computed at query time and compared against stored vectors. See [Vector Retrieval](AI_PIPELINE.md#vector-retrieval) and [Vector Database](ARCHITECTURE.md#vector-database).
 
 ## Why relational metadata and vectors belong together
 
-Keeping embeddings alongside relational metadata offers several advantages:
+- **Traceability:** join vectors → chunks → files → projects in one query
+- **Scoped search:** limit similarity search to a project or file set
+- **Source references:** paths and locations available in the retrieval path
+- **Simplicity:** one database for MVP
+- **Consistency:** transactional updates across content and embeddings
 
-- **Traceability:** Every retrieved vector can be joined directly to its chunk, file, and project without cross-system lookups.
-- **Scoped search:** Queries can be limited to a single project or file set while performing vector similarity ranking.
-- **Source references:** File paths, chunk locations, and project context needed for grounded LLM responses remain accessible in the same query path as retrieval.
-- **Operational simplicity:** One database reduces infrastructure complexity during MVP development and early deployment.
-- **Consistency:** Indexing status, chunk content, and embeddings can be updated within shared transactional boundaries.
-
-Separating vectors into a standalone vector database may become useful at larger scale, but colocating vectors with metadata is the right starting point for the MVP.
+Standalone vector DBs may help at scale; colocation is the MVP starting point.
 
 ---
 
 # Core Entities
 
-The MVP schema centers on six entities grouped into two domains: indexed repository data and project conversations.
-
----
+Six entities in two domains: indexed repository data and project conversations.
 
 ## Project
 
-Represents an indexed repository uploaded to CodeContext.
+Top-level container for one uploaded repository. Anchors [ingestion](AI_PIPELINE.md#repository-ingestion), [chunking](AI_PIPELINE.md#chunking-strategy), [embeddings](AI_PIPELINE.md#embeddings), [search](AI_PIPELINE.md#vector-retrieval), and [chat](AI_PIPELINE.md#llm-response-generation).
 
-### Purpose
+**Fields:** id, name, description (optional), source info (upload), indexing status, created/last-indexed timestamps, optional file counts
 
-A Project is the top-level container for everything derived from one repository upload. It anchors [file discovery](AI_PIPELINE.md#repository-ingestion), [chunking](AI_PIPELINE.md#chunking-strategy), [embedding storage](AI_PIPELINE.md#embeddings), [semantic search](AI_PIPELINE.md#vector-retrieval), and [chat sessions](AI_PIPELINE.md#llm-response-generation) related to that codebase.
-
-### Important fields
-
-Conceptual fields for a Project include:
-
-- **Identity:** Unique identifier
-- **Name:** Human-readable project name, often derived from the repository
-- **Description:** Optional summary shown in the UI
-- **Source information:** How the repository was provided (for the MVP, an uploaded archive or directory)
-- **Indexing status:** Whether ingestion is pending, in progress, completed, or failed
-- **Timestamps:** Created and last indexed times
-- **Summary metadata:** Optional high-level stats such as file count or supported file count
-
-The MVP does not require user ownership fields. Projects exist as standalone indexed repositories.
-
-### Relationships
-
-- One Project has many Files
-- One Project has many Conversations
-
----
+**Relationships:** one Project → many Files, many Conversations. No user ownership in MVP.
 
 ## File
 
-Represents a single file discovered inside a repository.
+Metadata for one discovered repository file; links structure to chunks and file references.
 
-### Purpose
+**Fields:** relative path, type/language, size, content hash (optional), indexing status, timestamps
 
-A File records metadata about source material included in indexing. It connects repository structure to searchable chunks and supports file references in AI responses.
+Raw content may live on disk/object storage; DB retains lookup metadata. See [Repository Ingestion](AI_PIPELINE.md#repository-ingestion).
 
-### Metadata stored
-
-Conceptual metadata for a File includes:
-
-- **Relative path:** Location within the repository (for example, `backend/app/main.py`)
-- **File type / language:** Such as Python, TypeScript, Markdown, JSON, or configuration
-- **Size:** File size in bytes
-- **Content hash:** Optional fingerprint used to detect unchanged files during re-indexing
-- **Indexing status:** Whether the file was parsed, skipped, or failed processing
-- **Timestamps:** When the file was first indexed and last updated
-
-The raw file content may be stored on disk or in object storage depending on implementation, but the database should retain enough metadata to locate and reference the file reliably.
-
-### Relationship to Project
-
-Each File belongs to exactly one Project. Files do not span projects. Deleting or re-indexing a Project implies replacing its associated file records and downstream chunks.
-
----
+**Relationships:** many Files → one Project
 
 ## Code Chunk
 
-Represents a searchable section of a file.
+Searchable file segment—the retrieval unit. Holds chunk text and metadata for search and references.
 
-### Purpose
+**Why chunks exist:** files are too large to embed or fit in context whole; splitting improves precision and lowers cost. See [Chunking Strategy](AI_PIPELINE.md#chunking-strategy).
 
-A Code Chunk is the unit of retrieval in CodeContext. It holds the text segment produced by parsing and chunking, along with metadata needed for semantic search and source referencing.
+**Fields:** chunk text, start/end lines or structural label, chunk index, token/char count, optional structural hint (function, class, section)
 
-Chunks are what the system embeds, retrieves, and sends to the LLM as context.
-
-### Why chunks exist
-
-Entire files are often too large to embed efficiently or fit into an LLM context window. Splitting files into focused sections allows:
-
-- More precise semantic search results
-- Lower retrieval and generation cost
-- Better alignment between user questions and specific functions, classes, configuration blocks, or documentation sections
-
-As described in the [AI pipeline chunking strategy](AI_PIPELINE.md#chunking-strategy), chunks should preserve enough context to remain understandable while staying small enough to retrieve selectively.
-
-### Conceptual fields
-
-- **Chunk text:** The indexed content segment
-- **Position metadata:** Start/end line numbers or structural label when available
-- **Chunk index:** Order of the chunk within its file
-- **Token or character count:** Useful for context window planning
-- **Optional structural hint:** Such as function, class, section, or configuration block
-
-### Relationship to File
-
-Each Code Chunk belongs to exactly one File. A File may produce one or many chunks depending on its size and structure. Chunks are not shared across files.
-
----
+**Relationships:** many Code Chunks → one File
 
 ## Embedding
 
-Represents the vector representation of a code chunk used for semantic search.
+Vector representation of a chunk for semantic search. Created at [indexing](AI_PIPELINE.md#embeddings); reused until content changes.
 
-### Purpose
+**Fields:** vector values, model identifier, dimensions, created timestamp
 
-An Embedding stores the numerical vector generated from a chunk's text. It enables nearest-neighbor search when a user question is converted into a query vector.
-
-Embeddings are created during [indexing](AI_PIPELINE.md#embeddings) and reused until the underlying chunk content changes.
-
-### Conceptual fields
-
-- **Vector values:** The embedding produced by the chosen model
-- **Model identifier:** Which embedding model generated the vector
-- **Dimensions:** Vector size, determined by the model
-- **Created timestamp:** When the embedding was generated
-
-Query-time question embeddings do not need to be persisted for the MVP. The database primarily stores embeddings for indexed chunks.
-
-### Relationship to Code Chunk
-
-Each Embedding corresponds to one Code Chunk. For the MVP, this is effectively a one-to-one relationship: one searchable chunk, one stored vector.
-
-Separating Embedding as its own entity keeps vector-specific concerns distinct from chunk text and metadata, and allows future support for re-embedding with different models without losing the underlying chunk record.
-
----
+**Relationships:** one Embedding → one Code Chunk (MVP). Separate entity supports future re-embedding with different models.
 
 ## Conversation
 
-Represents a user's interaction session with a specific project.
+Chat session scoped to one Project; supports the [frontend chat UI](ARCHITECTURE.md#frontend).
 
-### Purpose
+**Fields:** title (optional), created/last-activity timestamps, status (active/archived)
 
-A Conversation groups related questions and answers about one indexed repository. It supports the [frontend chat experience](ARCHITECTURE.md#frontend) and preserves context across multiple turns in the same session.
-
-For the MVP, a Conversation is scoped to a single Project. Users can start a new conversation when exploring a different line of inquiry about the same codebase.
-
-### Conceptual fields
-
-- **Title:** Optional label, possibly derived from the first user message
-- **Timestamps:** Created and last activity times
-- **Status:** Active or archived, if needed for UI organization
-
-The MVP does not require user identity on conversations.
-
-### Relationship to Project
-
-Each Conversation belongs to exactly one Project. Conversations do not span multiple repositories.
-
----
+**Relationships:** many Conversations → one Project. No user identity in MVP.
 
 ## Message
 
-Represents an individual user question or AI response within a conversation.
+One user question or assistant response in a conversation.
 
-### Purpose
+**Fields:** role (user/assistant), content, timestamp, source references (assistant), optional retrieval metadata
 
-Messages persist the chat history that powers the CodeContext Q&A experience. They record what the user asked, what the system answered, and enough metadata to support grounded responses with file references.
+Assistant messages are grounded in retrieved context. See [LLM Response Generation](AI_PIPELINE.md#llm-response-generation).
 
-### Conceptual fields
-
-- **Role:** User or assistant
-- **Content:** The message text
-- **Timestamps:** When the message was created
-- **Source references:** For assistant messages, the files or chunks used to produce the answer
-- **Optional retrieval metadata:** Which chunks were selected during context assembly, if stored for transparency or debugging
-
-User messages contain questions about the repository. Assistant messages contain generated explanations grounded in retrieved code context. See [LLM Response Generation](AI_PIPELINE.md#llm-response-generation).
-
-### Relationship to Conversation
-
-Each Message belongs to exactly one Conversation. Messages are ordered within a conversation to preserve chat history.
+**Relationships:** many Messages → one Conversation (ordered)
 
 ---
 
 # Entity Relationships
 
-The schema separates repository indexing data from conversational data. Both branches connect through Project.
+```
+Indexing:  Project → File → Code Chunk → Embedding
+Chat:      Project → Conversation → Message
+```
 
-## Indexing and search path
+Supports [ingestion](AI_PIPELINE.md#pipeline-flow) through vector storage and [query](AI_PIPELINE.md#vector-retrieval) back to [file references](AI_PIPELINE.md#llm-response-generation). Assistant messages may reference retrieved Files/Chunks without merging the hierarchies.
 
-Project
-|
-+-- File
-    |
-    +-- Code Chunk
-        |
-        +-- Embedding
+**Runtime query flow:**
 
-**Reading the hierarchy:**
+1. Identify [Project](#project) and [Conversation](#conversation)
+2. Embed question; search [Embeddings](#embedding) scoped to Project
+3. Retrieve [Code Chunks](#code-chunk) and parent [Files](#file)
+4. LLM generates [Message](#message) with file references
 
-- A **Project** represents one uploaded repository.
-- Each **File** in that repository is tracked as a child of the Project.
-- Each **Code Chunk** is a searchable segment of a File.
-- Each **Embedding** is the vector form of a Code Chunk used for semantic retrieval.
-
-This chain supports the [ingestion pipeline](AI_PIPELINE.md#pipeline-flow) from repository upload through vector storage, and the query pipeline from [semantic search](AI_PIPELINE.md#vector-retrieval) back to [file references](AI_PIPELINE.md#llm-response-generation).
-
-## Conversation path
-
-Project
-|
-+-- Conversation
-    |
-    +-- Message
-
-**Reading the hierarchy:**
-
-- A **Project** is the scope for all chat activity about that repository.
-- Each **Conversation** groups a sequence of related interactions.
-- Each **Message** records one user question or one AI response.
-
-Assistant messages may reference Files and Code Chunks retrieved during response generation, linking the conversation domain back to the indexing domain without merging the two hierarchies.
-
-## How the paths connect at runtime
-
-When a user asks a question:
-
-1. The system identifies the [Project](#project) and [Conversation](#conversation)
-2. The question is embedded and compared against [Embeddings](#embedding) scoped to that Project
-3. Relevant [Code Chunks](#code-chunk) and their parent [Files](#file) are retrieved
-4. The LLM generates a [Message](#message) using that context
-5. The assistant Message stores file references pointing back to indexed repository data
-
-See the full [query path](AI_PIPELINE.md#pipeline-flow) in the AI pipeline design.
-
-This design keeps indexing data stable and reusable while conversations remain a separate, append-only history.
+Indexing data stays stable and reusable; conversations are append-only history.
 
 ---
 
 # Future Considerations
 
-The MVP schema is intentionally focused. Several extensions may be added as the product matures.
-
 ## Users and authentication
 
-Future versions may introduce User accounts so projects, conversations, and uploads are owned, private, and accessible only to authorized people. This would add ownership fields to Project and Conversation and likely require access control across all entities.
+User ownership and access control on projects and conversations.
 
 ## Repository versions
 
-The MVP treats a Project as a snapshot of one uploaded repository. Later, CodeContext may support multiple versions of the same repository over time, allowing comparisons between indexed states and historical Q&A against specific versions.
+Multiple indexed snapshots per repository over time.
 
 ## File change tracking
 
-Incremental indexing could track which Files changed between uploads or syncs using content hashes and update only affected Chunks and Embeddings. This would reduce re-indexing cost and keep search results current. See [Reusing embeddings](AI_PIPELINE.md#reusing-embeddings).
+Hash-based incremental re-indexing of changed files only. See [Reusing embeddings](AI_PIPELINE.md#reusing-embeddings).
 
 ## Indexing jobs
 
-Background workers and job records could manage long-running ingestion tasks, retries, progress reporting, and failure recovery. Job entities would complement Project indexing status fields for larger repositories. See [Background indexing jobs](AI_PIPELINE.md#background-indexing-jobs).
+Background workers for long-running ingestion, retries, and progress. See [Background indexing jobs](AI_PIPELINE.md#background-indexing-jobs).
 
 ## Permissions
 
-Multi-user deployments may require project-level roles, shared access, read-only viewers, and audit trails. Permissions would extend the schema beyond the single-user MVP assumption.
+Project roles, shared access, read-only viewers, audit trails.
 
-These additions should build on the current entity model rather than replace it. The Project → File → Code Chunk → Embedding chain and the Project → Conversation → Message chain provide a stable foundation for future growth.
+Future additions extend—not replace—the Project → File → Code Chunk → Embedding and Project → Conversation → Message chains.
