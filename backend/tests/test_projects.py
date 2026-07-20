@@ -1,0 +1,59 @@
+import io
+import zipfile
+
+import pytest
+from httpx import AsyncClient
+
+
+def _build_repo_zip() -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("demo/src/app.py", "def run():\n    return True\n")
+        archive.writestr("demo/README.md", "# Demo repo\n")
+        archive.writestr("demo/node_modules/pkg/index.js", "module.exports = {}")
+    return buffer.getvalue()
+
+
+@pytest.mark.asyncio
+async def test_create_project(client: AsyncClient) -> None:
+    response = await client.post("/api/v1/projects", json={"name": "Demo Project"})
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["name"] == "Demo Project"
+    assert "id" in payload
+
+
+@pytest.mark.asyncio
+async def test_upload_repository_persists_discovered_files(client: AsyncClient) -> None:
+    create_response = await client.post("/api/v1/projects", json={"name": "Upload Test"})
+    project_id = create_response.json()["id"]
+
+    upload_response = await client.post(
+        f"/api/v1/projects/{project_id}/upload",
+        files={"archive": ("repo.zip", _build_repo_zip(), "application/zip")},
+    )
+    assert upload_response.status_code == 200
+    upload_payload = upload_response.json()
+    assert upload_payload["project_id"] == project_id
+    assert upload_payload["files_discovered"] == 2
+    assert upload_payload["ingestion_status"] == "completed"
+
+    files_response = await client.get(f"/api/v1/projects/{project_id}/files")
+    assert files_response.status_code == 200
+    files = files_response.json()
+    paths = {item["path"] for item in files}
+    assert "src/app.py" in paths
+    assert "README.md" in paths
+    assert all("content" not in item for item in files)
+
+
+@pytest.mark.asyncio
+async def test_upload_rejects_invalid_archive(client: AsyncClient) -> None:
+    create_response = await client.post("/api/v1/projects", json={"name": "Bad Upload"})
+    project_id = create_response.json()["id"]
+
+    upload_response = await client.post(
+        f"/api/v1/projects/{project_id}/upload",
+        files={"archive": ("repo.zip", b"not-a-zip", "application/zip")},
+    )
+    assert upload_response.status_code == 400

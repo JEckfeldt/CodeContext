@@ -1,0 +1,43 @@
+DEFAULT_IGNORED_DIR_NAMES = frozenset(
+    {
+        ".git",
+        ".hg",
+        ".svn",
+        "__pycache__",
+        ".pytest_cache",
+        ".mypy_cache",
+        ".ruff_cache",
+        "node_modules",
+        ".next",
+        "dist",
+        "build",
+        "out",
+        "coverage",
+        ".venv",
+        "venv",
+        "env",
+        ".turbo",
+        ".cache",
+        "target",
+        ".idea",
+        ".vscode",
+    }
+)
+
+SUPPORTED_EXTENSIONS: dict[str, str] = {
+    ".py": "python",
+    ".js": "javascript",
+    ".jsx": "javascript",
+    ".mjs": "javascript",
+    ".cjs": "javascript",
+    ".ts": "typescript",
+    ".tsx": "typescript",
+    ".md": "markdown",
+    ".json": "json",
+    ".yaml": "yaml",
+    ".yml": "yaml",
+    ".toml": "toml",
+    ".ini": "ini",
+    ".cfg": "configuration",
+    ".conf": "configuration",
+}

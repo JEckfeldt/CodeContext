@@ -12,8 +12,5 @@ AI-powered codebase assistant that helps developers understand, navigate, and le
 
 ## Documentation
 
-- [Architecture Overview](docs/ARCHITECTURE.md#overview) — components and system flow
-- [AI Pipeline](docs/AI_PIPELINE.md#overview) — ingestion, retrieval, LLM generation
-- [Database Schema](docs/DATABASE_SCHEMA.md#overview) — indexing, search, and chat entities
-- [Roadmap](docs/ROADMAP.md#codecontext-roadmap) — phased development plan
-- [Project Status](docs/PROJECT_STATUS.md#project-status) — implementation progress
+- [Roadmap](docs/ROADMAP.md) — phased development plan and scope
+- [Project Status](docs/PROJECT_STATUS.md) — current implementation progress
