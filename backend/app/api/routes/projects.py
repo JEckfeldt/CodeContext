@@ -5,7 +5,17 @@ from fastapi import APIRouter, File, HTTPException, UploadFile, status
 
 from app.core.config import settings
 from app.core.deps import DbSession
-from app.schemas import FileRead, ProjectCreate, ProjectRead, ProjectUploadResponse
+from app.schemas import (
+    ChunkSearchHit,
+    FileRead,
+    ProjectCreate,
+    ProjectRead,
+    ProjectSearchRequest,
+    ProjectSearchResponse,
+    ProjectUploadResponse,
+)
+from app.retrieval import search_similar_chunks
+from app.retrieval.exceptions import QueryEmbeddingError, SemanticSearchUnavailableError
 from app.services import project_service
 from app.services.ingestion_service import ingestion_service
 from app.services.project_service import ProjectNotFoundError
@@ -77,3 +87,34 @@ async def list_project_files(
         ) from exc
 
     return [FileRead.model_validate(file) for file in files]
+
+
+@router.post("/{project_id}/search", response_model=ProjectSearchResponse)
+async def search_project(
+    project_id: uuid.UUID,
+    payload: ProjectSearchRequest,
+    session: DbSession,
+) -> ProjectSearchResponse:
+    try:
+        results = await search_similar_chunks(session, project_id, payload.query)
+    except ProjectNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except SemanticSearchUnavailableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except QueryEmbeddingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+
+    return ProjectSearchResponse(
+        project_id=project_id,
+        query=payload.query,
+        results=[ChunkSearchHit.model_validate(hit) for hit in results],
+    )
