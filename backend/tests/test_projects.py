@@ -1,8 +1,11 @@
 import io
+import uuid
 import zipfile
 
 import pytest
 from httpx import AsyncClient
+
+from app.services.indexing_service import count_project_chunks
 
 
 def _build_repo_zip() -> bytes:
@@ -45,6 +48,27 @@ async def test_upload_repository_persists_discovered_files(client: AsyncClient) 
     assert "src/app.py" in paths
     assert "README.md" in paths
     assert all("content" not in item for item in files)
+
+
+@pytest.mark.asyncio
+async def test_upload_repository_creates_code_chunks(
+    client: AsyncClient,
+    db_session,
+) -> None:
+    create_response = await client.post("/api/v1/projects", json={"name": "Chunk Test"})
+    project_id = create_response.json()["id"]
+
+    upload_response = await client.post(
+        f"/api/v1/projects/{project_id}/upload",
+        files={"archive": ("repo.zip", _build_repo_zip(), "application/zip")},
+    )
+    assert upload_response.status_code == 200
+    upload_payload = upload_response.json()
+    assert upload_payload["chunks_created"] >= 2
+
+    chunk_count = await count_project_chunks(db_session, uuid.UUID(project_id))
+    assert chunk_count == upload_payload["chunks_created"]
+    assert chunk_count >= 2
 
 
 @pytest.mark.asyncio

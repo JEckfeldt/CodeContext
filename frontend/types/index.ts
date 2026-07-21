@@ -8,6 +8,7 @@ export type Project = {
 export type UploadResult = {
   project_id: string;
   files_discovered: number;
+  chunks_created: number;
   ingestion_status: string;
 };
 
@@ -20,8 +21,4 @@ export type FileRecord = {
   language: string | null;
   size: number;
   created_at: string;
-};
-
-export type HealthResponse = {
-  status: string;
 };

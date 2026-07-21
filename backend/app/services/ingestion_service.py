@@ -11,7 +11,7 @@ from app.indexing.extraction import (
     create_temp_extraction_dir,
     extract_zip_archive,
 )
-from app.services import project_service
+from app.services import indexing_service, project_service
 
 
 class IngestionService:
@@ -35,9 +35,14 @@ class IngestionService:
                 project_id,
                 discovered,
             )
+            chunks_created = await indexing_service.index_project_files(
+                session,
+                project_id,
+            )
             return {
                 "project_id": project_id,
                 "files_discovered": files_discovered,
+                "chunks_created": chunks_created,
                 "ingestion_status": "completed",
             }
         except RepositoryExtractionError:
@@ -45,6 +50,7 @@ class IngestionService:
             return {
                 "project_id": project_id,
                 "files_discovered": 0,
+                "chunks_created": 0,
                 "ingestion_status": "failed",
             }
         finally:

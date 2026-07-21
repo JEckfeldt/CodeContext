@@ -9,22 +9,31 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.database.base import Base
 from app.database.session import get_db
 from app.main import app
+from app.models import CodeChunk, File, Project  # noqa: F401
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
 
 @pytest.fixture
-async def client() -> AsyncClient:
+async def async_engine():
     engine = create_async_engine(TEST_DATABASE_URL)
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
+    yield engine
+    await engine.dispose()
 
-    session_factory = async_sessionmaker(
-        engine,
+
+@pytest.fixture
+async def session_factory(async_engine):
+    return async_sessionmaker(
+        async_engine,
         class_=AsyncSession,
         expire_on_commit=False,
     )
 
+
+@pytest.fixture
+async def client(session_factory) -> AsyncClient:
     async def override_get_db():
         async with session_factory() as session:
             yield session
@@ -36,4 +45,9 @@ async def client() -> AsyncClient:
         yield async_client
 
     app.dependency_overrides.clear()
-    await engine.dispose()
+
+
+@pytest.fixture
+async def db_session(session_factory):
+    async with session_factory() as session:
+        yield session

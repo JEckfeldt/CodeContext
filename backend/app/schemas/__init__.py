@@ -1,6 +1,5 @@
 from app.schemas.project import (
     FileRead,
-    IngestionStatus,
     ProjectCreate,
     ProjectRead,
     ProjectUploadResponse,
@@ -8,7 +7,6 @@ from app.schemas.project import (
 
 __all__ = [
     "FileRead",
-    "IngestionStatus",
     "ProjectCreate",
     "ProjectRead",
     "ProjectUploadResponse",

@@ -17,14 +17,10 @@ class ProjectRead(BaseModel):
     updated_at: datetime
 
 
-class IngestionStatus(BaseModel):
-    status: str
-    files_discovered: int
-
-
 class ProjectUploadResponse(BaseModel):
     project_id: UUID
     files_discovered: int
+    chunks_created: int
     ingestion_status: str
 
 

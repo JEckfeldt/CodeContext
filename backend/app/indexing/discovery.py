@@ -92,7 +92,3 @@ def discover_files(
 
     discovered.sort(key=lambda item: item.path)
     return discovered
-
-
-def should_skip_directory(name: str) -> bool:
-    return _should_skip_directory(name)
