@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     data_dir: str = "./data"
     cors_origins: list[str] = ["http://localhost:3000"]
     max_ingest_file_bytes: int = 1_048_576
+    openai_api_key: str | None = None
+    embedding_enabled: bool = False
+    embedding_model: str = "text-embedding-3-small"
+    embedding_batch_size: int = 64
 
     @field_validator("cors_origins", mode="before")
     @classmethod

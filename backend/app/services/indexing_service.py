@@ -35,6 +35,7 @@ async def _index_file(session: AsyncSession, file: File) -> int:
                 content=draft.content,
                 language=draft.language,
                 chunk_kind=draft.chunk_kind,
+                symbol_name=draft.symbol_name,
             )
         )
     return len(drafts)

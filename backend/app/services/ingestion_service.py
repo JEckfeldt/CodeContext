@@ -11,7 +11,7 @@ from app.indexing.extraction import (
     create_temp_extraction_dir,
     extract_zip_archive,
 )
-from app.services import indexing_service, project_service
+from app.services import embedding_service, indexing_service, project_service
 
 
 class IngestionService:
@@ -39,10 +39,15 @@ class IngestionService:
                 session,
                 project_id,
             )
+            embeddings_created = await embedding_service.embed_project_chunks(
+                session,
+                project_id,
+            )
             return {
                 "project_id": project_id,
                 "files_discovered": files_discovered,
                 "chunks_created": chunks_created,
+                "embeddings_created": embeddings_created,
                 "ingestion_status": "completed",
             }
         except RepositoryExtractionError:
@@ -51,6 +56,7 @@ class IngestionService:
                 "project_id": project_id,
                 "files_discovered": 0,
                 "chunks_created": 0,
+                "embeddings_created": 0,
                 "ingestion_status": "failed",
             }
         finally:

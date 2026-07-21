@@ -9,6 +9,7 @@ export type UploadResult = {
   project_id: string;
   files_discovered: number;
   chunks_created: number;
+  embeddings_created: number;
   ingestion_status: string;
 };
 

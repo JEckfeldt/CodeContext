@@ -21,6 +21,7 @@ class ProjectUploadResponse(BaseModel):
     project_id: UUID
     files_discovered: int
     chunks_created: int
+    embeddings_created: int
     ingestion_status: str
 
 

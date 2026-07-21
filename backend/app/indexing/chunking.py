@@ -14,6 +14,7 @@ class ChunkDraft:
     content: str
     language: str | None
     chunk_kind: str = TEXT_BLOCK_KIND
+    symbol_name: str | None = None
 
 
 def chunk_file_content(
@@ -108,6 +109,7 @@ def chunk_parsed_blocks(
                     content=block.content,
                     language=language,
                     chunk_kind=block.chunk_kind,
+                    symbol_name=block.symbol_name,
                 )
             )
             chunk_index += 1
@@ -130,6 +132,7 @@ def chunk_parsed_blocks(
                     chunk_kind=block.chunk_kind
                     if sub_index == 0
                     else TEXT_BLOCK_KIND,
+                    symbol_name=block.symbol_name if sub_index == 0 else None,
                 )
             )
             chunk_index += 1
