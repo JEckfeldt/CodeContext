@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from typing import Any, Mapping
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import bindparam, text
@@ -93,14 +94,16 @@ async def search_similar_chunks(
     )
     rows = result.mappings().all()
 
-    return [
-        ChunkSearchResult(
-            file_path=row["file_path"],
-            content=row["content"],
-            start_line=row["start_line"],
-            end_line=row["end_line"],
-            symbol_name=row["symbol_name"],
-            similarity=float(row["similarity"]),
-        )
-        for row in rows
-    ]
+    return [_mapping_row_to_result(row) for row in rows]
+
+
+def _mapping_row_to_result(row: Mapping[str, Any]) -> ChunkSearchResult:
+    """Convert a SQLAlchemy row mapping to a ``ChunkSearchResult``."""
+    return ChunkSearchResult(
+        file_path=row["file_path"],
+        content=row["content"],
+        start_line=row["start_line"],
+        end_line=row["end_line"],
+        symbol_name=row["symbol_name"],
+        similarity=float(row["similarity"]),
+    )

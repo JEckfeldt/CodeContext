@@ -5,6 +5,8 @@ from fastapi import APIRouter, File, HTTPException, UploadFile, status
 
 from app.core.config import settings
 from app.core.deps import DbSession
+from app.retrieval import search_similar_chunks
+from app.retrieval.exceptions import QueryEmbeddingError, SemanticSearchUnavailableError
 from app.schemas import (
     ChunkSearchHit,
     FileRead,
@@ -14,8 +16,6 @@ from app.schemas import (
     ProjectSearchResponse,
     ProjectUploadResponse,
 )
-from app.retrieval import search_similar_chunks
-from app.retrieval.exceptions import QueryEmbeddingError, SemanticSearchUnavailableError
 from app.services import project_service
 from app.services.ingestion_service import ingestion_service
 from app.services.project_service import ProjectNotFoundError
@@ -95,6 +95,7 @@ async def search_project(
     payload: ProjectSearchRequest,
     session: DbSession,
 ) -> ProjectSearchResponse:
+    """Run semantic search over embedded chunks in a project."""
     try:
         results = await search_similar_chunks(session, project_id, payload.query)
     except ProjectNotFoundError as exc:
@@ -102,12 +103,7 @@ async def search_project(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(exc),
         ) from exc
-    except SemanticSearchUnavailableError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=str(exc),
-        ) from exc
-    except QueryEmbeddingError as exc:
+    except (SemanticSearchUnavailableError, QueryEmbeddingError) as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(exc),

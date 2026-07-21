@@ -45,38 +45,56 @@ export function RepositorySearchSection({
     }
   }
 
+  const showIntro = status === "idle" && results.length === 0 && !error;
   const showEmptyResults =
     status === "success" && submittedQuery !== null && results.length === 0;
 
   return (
-    <section className="flex flex-1 flex-col">
-      <p className="mb-4 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+    <section className="flex flex-1 flex-col" aria-labelledby="repository-search-heading">
+      <p
+        id="repository-search-heading"
+        className="mb-4 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground"
+      >
         Search repository
       </p>
 
-      <div className="mb-8 min-h-[8rem] space-y-4">
-        {status === "idle" ? (
-          <p className="text-sm leading-7 text-muted">
-            Search indexed code with natural language. Results come from semantic
-            similarity over ingested chunks (requires embeddings on upload).
+      <div
+        className="mb-8 min-h-[10rem] space-y-4"
+        aria-live="polite"
+        aria-busy={status === "loading"}
+      >
+        {showIntro ? (
+          <p className="max-w-[68ch] text-sm leading-7 text-muted">
+            Search indexed code with natural language. Results use semantic similarity
+            over ingested chunks. Enable{" "}
+            <span className="font-mono text-xs text-foreground">EMBEDDING_ENABLED</span>{" "}
+            and re-upload so vectors exist for search.
           </p>
         ) : null}
 
         {status === "loading" ? (
-          <p className="text-sm leading-7 text-muted">Searching the repository…</p>
+          <div className="rounded-lg border border-border bg-surface px-4 py-3">
+            <p className="text-sm leading-7 text-muted">Searching the repository…</p>
+          </div>
         ) : null}
 
         {status === "error" && error ? (
-          <p className="text-sm leading-7 text-red-700" role="alert">
-            {error}
-          </p>
+          <div
+            className="rounded-lg border border-red-200 bg-red-50 px-4 py-3"
+            role="alert"
+          >
+            <p className="text-sm leading-7 text-red-800">{error}</p>
+          </div>
         ) : null}
 
         {showEmptyResults ? (
-          <p className="text-sm leading-7 text-muted">
-            No matching chunks for &ldquo;{submittedQuery}&rdquo;. Try a different
-            phrase or re-upload with embeddings enabled.
-          </p>
+          <div className="rounded-lg border border-border bg-surface px-4 py-3">
+            <p className="text-sm leading-7 text-muted">
+              No matching chunks for &ldquo;{submittedQuery}&rdquo;. Try a different
+              phrase, confirm embeddings were created on upload, or broaden your
+              question.
+            </p>
+          </div>
         ) : null}
 
         {results.length > 0 ? (
@@ -85,12 +103,13 @@ export function RepositorySearchSection({
               {results.length} result{results.length === 1 ? "" : "s"} for &ldquo;
               {submittedQuery}&rdquo;
             </p>
-            {results.map((hit, index) => (
-              <SearchResultCard
-                key={`${hit.file_path}-${hit.start_line}-${hit.end_line}-${index}`}
-                hit={hit}
-              />
-            ))}
+            <ul className="space-y-4">
+              {results.map((hit, index) => (
+                <li key={`${hit.file_path}-${hit.start_line}-${hit.end_line}-${index}`}>
+                  <SearchResultCard hit={hit} />
+                </li>
+              ))}
+            </ul>
           </div>
         ) : null}
       </div>

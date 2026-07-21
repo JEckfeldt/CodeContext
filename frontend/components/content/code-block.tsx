@@ -27,7 +27,7 @@ export function CodeBlock({ path, language, code, className }: CodeBlockProps) {
           ) : null}
         </div>
       ) : null}
-      <pre className="overflow-x-auto px-4 py-3 font-mono text-[0.8125rem] leading-6 text-code-text">
+      <pre className="max-h-[inherit] overflow-x-auto overflow-y-auto px-4 py-3 font-mono text-[0.8125rem] leading-6 text-code-text">
         <code>{code.trimEnd()}</code>
       </pre>
     </div>
