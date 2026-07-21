@@ -1,12 +1,36 @@
 import { getApiBaseUrl } from "@/lib/config";
 import type { FileRecord, Project, UploadResult } from "@/types";
 
-async function parseJson<T>(response: Response): Promise<T> {
-  if (!response.ok) {
-    const message = await response.text();
-    throw new Error(message || `Request failed with status ${response.status}`);
+function formatApiError(status: number, body: unknown, fallbackText: string): string {
+  if (body && typeof body === "object" && "detail" in body) {
+    const detail = (body as { detail: unknown }).detail;
+    if (typeof detail === "string") return detail;
+    if (Array.isArray(detail)) {
+      return detail
+        .map((item) =>
+          typeof item === "object" && item && "msg" in item
+            ? String((item as { msg: unknown }).msg)
+            : String(item),
+        )
+        .join("; ");
+    }
   }
-  return response.json() as Promise<T>;
+  if (fallbackText) return fallbackText;
+  return `Request failed with status ${status}`;
+}
+
+async function parseJson<T>(response: Response): Promise<T> {
+  const text = await response.text();
+  if (!response.ok) {
+    let body: unknown;
+    try {
+      body = text ? JSON.parse(text) : undefined;
+    } catch {
+      body = undefined;
+    }
+    throw new Error(formatApiError(response.status, body, text));
+  }
+  return (text ? JSON.parse(text) : {}) as T;
 }
 
 export async function createProject(name: string): Promise<Project> {
@@ -35,4 +59,8 @@ export async function uploadRepository(
 export async function listProjectFiles(projectId: string): Promise<FileRecord[]> {
   const response = await fetch(`${getApiBaseUrl()}/projects/${projectId}/files`);
   return parseJson<FileRecord[]>(response);
+}
+
+export function projectNameFromZipFilename(filename: string): string {
+  return filename.replace(/\.zip$/i, "") || "repository";
 }

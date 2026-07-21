@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import { CodeContextApp } from "@/components/code-context-app";
 
 export default function Home() {
-  redirect("/dashboard");
+  return <CodeContextApp />;
 }

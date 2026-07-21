@@ -60,8 +60,10 @@ services:
       - "${FRONTEND_PORT:-3000}:3000"
     volumes:
       - ./frontend:/app
-      - /app/node_modules
-      - /app/.next
+      - frontend-node-modules:/app/node_modules
+      - frontend-next:/app/.next
 
 volumes:
   postgres-data:
+  frontend-node-modules:
+  frontend-next:
