@@ -23,3 +23,18 @@ export type FileRecord = {
   size: number;
   created_at: string;
 };
+
+export type ChunkSearchHit = {
+  file_path: string;
+  content: string;
+  start_line: number;
+  end_line: number;
+  symbol_name: string | null;
+  similarity: number;
+};
+
+export type ProjectSearchResponse = {
+  project_id: string;
+  query: string;
+  results: ChunkSearchHit[];
+};

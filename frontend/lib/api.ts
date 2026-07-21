@@ -1,5 +1,5 @@
 import { getApiBaseUrl } from "@/lib/config";
-import type { FileRecord, Project, UploadResult } from "@/types";
+import type { FileRecord, Project, ProjectSearchResponse, UploadResult } from "@/types";
 
 function formatApiError(status: number, body: unknown, fallbackText: string): string {
   if (body && typeof body === "object" && "detail" in body) {
@@ -59,6 +59,18 @@ export async function uploadRepository(
 export async function listProjectFiles(projectId: string): Promise<FileRecord[]> {
   const response = await fetch(`${getApiBaseUrl()}/projects/${projectId}/files`);
   return parseJson<FileRecord[]>(response);
+}
+
+export async function searchProject(
+  projectId: string,
+  query: string,
+): Promise<ProjectSearchResponse> {
+  const response = await fetch(`${getApiBaseUrl()}/projects/${projectId}/search`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query }),
+  });
+  return parseJson<ProjectSearchResponse>(response);
 }
 
 export function projectNameFromZipFilename(filename: string): string {
