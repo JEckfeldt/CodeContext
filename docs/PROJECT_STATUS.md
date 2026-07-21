@@ -12,7 +12,7 @@ For planned phases and scope, see the [Roadmap](ROADMAP.md).
 
 Phase 1 is complete end-to-end (upload → browse files). Phase 2A (chunk persistence and line-based chunking) is complete. The active roadmap goal is to **prepare repositories for intelligent search**: smarter chunks, embeddings, and vector storage, as described in [Phase 2 of the Roadmap](ROADMAP.md#phase-2--code-indexing).
 
-**Where we are now:** Every successful ZIP upload creates `File` rows and derived `CodeChunk` rows automatically. Chunks are not embedded and are not searchable by meaning yet—that work is Phase 2B–2D below.
+**Where we are now:** Every successful ZIP upload creates `File` rows and derived `CodeChunk` rows automatically. Python and Markdown files use structure-aware parsers; other languages fall back to line-based chunks. Chunks are not embedded and are not searchable by meaning yet—that work is Phase 2C–2D below.
 
 ---
 
@@ -47,18 +47,19 @@ Roadmap outcome: *A repository becomes searchable by meaning, not just filenames
 
 **Limitations (by design for 2A):** No AST or tree-sitter; no overlap tuning; no project-level indexing status or reindex API; frontend does not surface chunks.
 
-### Phase 2B — Language-aware parsing (not started)
+### Phase 2B — Language-aware parsing (complete)
 
 Aligns with Roadmap *“Language-aware parsing”* and better *“Code chunking”* than fixed-size text blocks.
 
-- [ ] Parser registry under `app/parsers/` (by `File.language`)
-- [ ] Python: `ast`-based blocks (functions, classes, module sections)
-- [ ] Markdown: split on headings
-- [ ] Fallback: keep line-based chunker for JS/TS, config, and unknown types
-- [ ] Richer `chunk_kind` values (`function`, `class`, `markdown_section`, etc.) and optional `symbol_name`
-- [ ] Tests per parser + pipeline integration
+- [x] Parser registry under `app/parsers/` (by `File.language`)
+- [x] Python: `ast`-based blocks (module preamble, functions, classes, methods)
+- [x] Markdown: split on headings (`markdown_section`, heading as `symbol_name` in parser blocks)
+- [x] Fallback: line-based chunker for JS/TS, config, unknown types, and invalid Python syntax
+- [x] Richer `chunk_kind` values (`function`, `class`, `method`, `module`, `markdown_section`, `text_block`)
+- [x] Pipeline: `File` → parser (if available) → size chunking → `CodeChunk`
+- [x] Tests: Python parser, Markdown parser, pipeline fallback
 
-**Suggested order:** Implement Python + Markdown parsers first (high value, stdlib-only), then expand.
+**Note:** `symbol_name` is produced by parsers for structure-aware blocks; it is not persisted on `CodeChunk` yet (optional future column).
 
 ### Phase 2C — Embedding generation (not started)
 
@@ -133,12 +134,13 @@ See [Roadmap Phase 5](ROADMAP.md#phase-5--advanced-developer-tools).
 - [x] Connect Projects UI to ingestion API
 - [x] End-to-end Phase 1 demo (upload → browse files in UI)
 - [x] Phase 2A — CodeChunk persistence and line-based chunking on ingest
+- [x] Phase 2B — Language-aware parsing (Python, Markdown) + pipeline integration
 
 ---
 
 ## In progress
 
-**Nothing actively in flight.** Pick the next slice from **Suggested next steps** below.
+**Nothing actively in flight.** Next recommended slice: **Phase 2C** (embeddings).
 
 ---
 
@@ -146,19 +148,19 @@ See [Roadmap Phase 5](ROADMAP.md#phase-5--advanced-developer-tools).
 
 These follow the [Roadmap](ROADMAP.md) order and current codebase state.
 
-1. **Operational:** After pulling Phase 2A, run `alembic upgrade head` against your Postgres database (Docker Compose or local) so `code_chunks` exists. Re-upload a ZIP and confirm `chunks_created` in the upload JSON response.
+1. **Operational:** Run `alembic upgrade head` on Postgres so `code_chunks` exists. Re-upload a ZIP and confirm `chunks_created` in the upload JSON response.
 
-2. **Phase 2B (recommended next feature):** Add Python and Markdown structure-aware chunking so chunks align with functions and doc sections instead of arbitrary 2000-character windows. Re-run indexing on upload (same hook as today).
+2. **Phase 2C:** Add embedding provider + batch job after chunking; feature-flag with `EMBEDDING_ENABLED` until API keys are configured.
 
-3. **Phase 2C:** Add embedding provider + batch job after chunking; feature-flag with `EMBEDDING_ENABLED` until API keys are configured.
+3. **Phase 2D:** Add pgvector column and index; verify one project can store vectors for all chunks.
 
-4. **Phase 2D:** Add pgvector column and index; verify one project can store vectors for all chunks.
+4. **Phase 3:** Implement search API and minimal search UI once vectors exist.
 
-5. **Phase 3:** Implement `POST /projects/{id}/search` (or similar) and a minimal search box in the frontend—first time users can search by meaning.
+5. **Parallel / optional:** Git clone ingestion (Roadmap Phase 1 extension).
 
-6. **Parallel / optional:** Git clone ingestion (Roadmap Phase 1 extension) if ZIP-only is a blocker for demos.
+6. **Phase 4:** Wire the single-page Q&A UI to real retrieval + LLM.
 
-7. **Phase 4:** Wire the existing single-page Q&A UI to real retrieval + LLM once search returns ranked chunks.
+7. **Future parsing:** JS/TS structure-aware parsers (tree-sitter or heuristics) if chunk quality for those languages becomes a bottleneck.
 
 ---
 
@@ -175,10 +177,10 @@ These follow the [Roadmap](ROADMAP.md) order and current codebase state.
 | Endpoint | Behavior |
 |----------|----------|
 | `POST /api/v1/projects` | Create project |
-| `POST /api/v1/projects/{id}/upload` | ZIP → discover files → replace `files` → line-chunk → insert `code_chunks`; returns `files_discovered`, `chunks_created`, `ingestion_status` |
+| `POST /api/v1/projects/{id}/upload` | ZIP → discover files → replace `files` → parse/chunk → insert `code_chunks`; returns `files_discovered`, `chunks_created`, `ingestion_status` |
 | `GET /api/v1/projects/{id}/files` | File metadata only (no `content`, no chunks) |
 
-Chunking lives in `app/indexing/chunking.py`; orchestration in `app/services/indexing_service.py`, triggered from `app/services/ingestion_service.py`.
+Indexing: `app/parsers/` (Python/Markdown) → `app/indexing/pipeline.py` → `app/indexing/chunking.py` (size limits + fallback); orchestration in `app/services/indexing_service.py` after upload.
 
 ### Frontend
 
