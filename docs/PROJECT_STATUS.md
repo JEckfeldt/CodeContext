@@ -1,188 +1,207 @@
 # CodeContext Project Status
 
-Living progress tracker for the CodeContext monorepo. Update this file as milestones move forward.
+Handoff document for continuing development. Scope and long-term direction live in the [Roadmap](ROADMAP.md).
 
-For planned phases and scope, see the [Roadmap](ROADMAP.md).
-
----
-
-## Current milestone
-
-**Phase 3 — Semantic Search** (next)
-
-**Phase 2 — Code Indexing** is **complete**. Repositories are ingested, parsed into chunks, optionally embedded, and vectors are indexed with **HNSW (cosine)** on PostgreSQL for Phase 3 retrieval.
-
-**Where we are now:** Upload → chunk → embed (opt-in) → pgvector HNSW index. No search API or UI yet—that is Phase 3.
+**Summary:** Phase 1 and Phase 2 are **complete**. The app ingests ZIP repositories, stores files, builds semantic chunks, optionally embeds them, and indexes vectors in PostgreSQL. **Semantic search and AI answers are not built yet** (Phases 3–4).
 
 ---
 
-## Phase 1 — Repository Ingestion (complete)
+## Current State
 
+CodeContext is a monorepo **AI codebase assistant** (work in progress):
 
-| Area                                               | Status                           |
-| -------------------------------------------------- | -------------------------------- |
-| ZIP upload & project creation                      | Done                             |
-| File discovery (extensions, ignores, `.gitignore`) | Done                             |
-| Persist file metadata + full source `content`      | Done                             |
-| Frontend upload + file browser                     | Done                             |
-| Git clone ingestion                                | Not started (optional extension) |
+| Layer | Stack |
+|--------|--------|
+| Frontend | Next.js (App Router), single-page UI — upload + file list + mock Q&A preview |
+| Backend | FastAPI, SQLAlchemy async, Alembic |
+| Database | PostgreSQL 16 + **pgvector** (`pgvector/pgvector` image in Docker Compose) |
 
+**Data flow today:** ZIP upload → project + `files` rows (with full source `content`) → `code_chunks` (parsed/split) → optional OpenAI embeddings → pgvector column + **HNSW (cosine)** index.
 
-**Outcome (Roadmap):** User can upload a repository and browse discovered source files. **Achieved.**
-
----
-
-## Phase 2 — Code Indexing (complete)
-
-Roadmap features: language-aware parsing, code chunking, embedding generation, vector storage (pgvector).  
-Roadmap indexing outcome: *Prepare repositories for intelligent search* — **achieved** (vectors + HNSW ready; query API is Phase 3).
-
-### Phase 2A–2C (complete)
-
-- **2A:** `CodeChunk` model, line chunking, ingest-time indexing, migration `0002`
-- **2B:** Python/Markdown parsers, `symbol_name`, pipeline fallback
-- **2C:** OpenAI embeddings (opt-in), migration `0003_chunk_symbol_embedding`
-
-### Phase 2D — Vector storage (pgvector) (complete)
-
-- [x] HNSW index `ix_code_chunks_embedding_hnsw` on `code_chunks.embedding` with **`vector_cosine_ops`**
-- [x] Partial index `WHERE embedding IS NOT NULL`
-- [x] Alembic migration `0004_code_chunks_embedding_hnsw` (PostgreSQL only; no-op on other dialects)
-- [x] Backend Docker entrypoint runs **`alembic upgrade head`** before uvicorn
-- [x] SQLite tests keep **JSON** embedding fallback via `EmbeddingColumn`
-- [x] Postgres integration test (`pytest -m integration` + `CODECONTEXT_INTEGRATION_DATABASE_URL`)
-
-**Ops notes:** Default HNSW uses pgvector defaults. Tune `m` / `ef_construction` later if repos grow very large. Similarity queries should use the **`<=>` cosine distance** operator (same ops class as the index).
-
-**Migration note:** Revision `0003` id shortened to `0003_chunk_symbol_embedding` (fits Alembic `version_num` 32-char limit). Existing DBs created only via `init_db()` should run `alembic stamp 0002_create_code_chunks` then `alembic upgrade head` once.
-
-### Phase 2 — Cross-cutting (optional, as needed)
-
-- [ ] `Project.indexing_status` / `chunks_count` / `indexed_at` for clearer upload vs index failures
-- [ ] `POST /api/v1/projects/{id}/reindex` to retry chunking (and later embedding) without re-upload
-- [ ] Expose chunk stats in upload response or a small status endpoint (backend-only until Phase 3 UI)
+**What CodeContext can do today:** ingest a repo, browse discovered files in the UI, and (on the backend) prepare chunked, embeddable vector data for future retrieval. It cannot yet search by meaning or answer questions with real RAG.
 
 ---
 
-## Phase 3 — Semantic Search (upcoming)
+## Completed Work
 
-See [Roadmap Phase 3](ROADMAP.md#phase-3--semantic-search). **Unblocked** — Phase 2 indexing infrastructure is ready.
+### Phase 1 — Repository Ingestion
 
-- [ ] Vector similarity search scoped by `project_id`
-- [ ] Search API + ranking / filters
-- [ ] Search UI and context retrieval hooks for AI
+| Deliverable | Purpose |
+|-------------|---------|
+| ZIP repository upload | Accept a codebase archive without Git hosting integration |
+| File discovery and filtering | Walk the tree; respect supported extensions, default ignores, and `.gitignore` |
+| File persistence | Store path, metadata, and full text in PostgreSQL for downstream indexing |
+| Frontend upload flow | Create project, upload ZIP, show progress/errors via `RepositoryUploader` |
+| File browsing | List ingested paths after upload (`FileBrowser`) |
 
----
+**Roadmap outcome achieved:** user can upload a repository and browse discovered source files.
 
-## Phase 4 — AI Code Assistant (upcoming)
+**Not in Phase 1:** Git clone ingestion (optional future extension).
 
-See [Roadmap Phase 4](ROADMAP.md#phase-4--ai-code-assistant). Blocked on **Phase 3** (retrieval).
+### Phase 2 — Code Indexing
 
-- [ ] Replace mock “Ask CodeContext” with RAG over retrieved chunks
-- [ ] LLM integration, citations, conversation history
+| Deliverable | Purpose |
+|-------------|---------|
+| `CodeChunk` model | Store retrievable snippets with line ranges, language, kind, optional `symbol_name` |
+| Language-aware parsing | Choose parser by `File.language` instead of only fixed-size splits |
+| Python AST parsing | Chunk functions, classes, methods, and module preamble with accurate line numbers |
+| Markdown parsing | Split on headings into `markdown_section` blocks |
+| Chunk generation | Line-based fallback for other languages; size limits (~2000 chars) after structure-aware blocks |
+| Embedding generation | OpenAI provider; batch embed after upload when enabled |
+| pgvector storage | `embedding` column (1536-dim); metadata `embedding_model`, `embedded_at` |
+| HNSW vector index | `ix_code_chunks_embedding_hnsw` with `vector_cosine_ops`, partial `WHERE embedding IS NOT NULL` |
+| Tests and migrations | Alembic `0001`–`0004`; pytest unit suite + optional Postgres integration tests |
 
----
-
-## Phase 5 — Advanced Developer Tools (upcoming)
-
-See [Roadmap Phase 5](ROADMAP.md#phase-5--advanced-developer-tools).
-
-- [ ] Background indexing, repo maps, dependency insights, retrieval tuning
-
----
-
-## Completed (rollup checklist)
-
-- [x] Repository structure and core documentation
-- [x] Frontend application shell and design system
-- [x] Backend FastAPI foundation
-- [x] PostgreSQL + pgvector extension enabled; chunk embeddings stored when enabled
-- [x] Project and File database models
-- [x] Repository ZIP ingestion API
-- [x] File discovery (supported types, ignores, `.gitignore`)
-- [x] Ingestion tests (API + discovery)
-- [x] Docker Compose dev environment
-- [x] Improved frontend hot reload in Docker
-- [x] Connect Projects UI to ingestion API
-- [x] End-to-end Phase 1 demo (upload → browse files in UI)
-- [x] Phase 2A — CodeChunk persistence and line-based chunking on ingest
-- [x] Phase 2B — Language-aware parsing (Python, Markdown) + pipeline integration
-- [x] Phase 2C — Embedding generation (OpenAI, opt-in via `EMBEDDING_ENABLED`)
-- [x] Phase 2D — pgvector HNSW index (cosine) + Docker alembic on startup
+**Roadmap indexing goal achieved:** repositories are **ready for** semantic search (vectors stored and indexed). The **search/query path** itself is Phase 3.
 
 ---
 
-## In progress
+## Current Capabilities
 
-**Phase 3 — Semantic search API and retrieval** (recommended next).
+End-to-end behavior **as implemented**:
+
+1. **Upload repository ZIP** — `POST /api/v1/projects`, then `POST /api/v1/projects/{id}/upload`.
+2. **Store repository files** — discovered files persisted with content in `files`.
+3. **Parse source code** — Python and Markdown use dedicated parsers; others use line-based chunking.
+4. **Create semantic chunks** — `code_chunks` rows linked to files and projects.
+5. **Generate embeddings** — when `EMBEDDING_ENABLED=true` and `OPENAI_API_KEY` is set; skipped otherwise (`embeddings_created: 0`).
+6. **Store vectors for future retrieval** — embeddings in pgvector; HNSW index for cosine similarity queries (use `<=>` in SQL).
+
+**Frontend (working):** single-page upload, repository summary, file list.
+
+**Frontend (mock only):** “Ask CodeContext” uses hardcoded preview answers — not connected to the backend.
+
+**Backend API surface (today):**
+
+| Method | Path | Notes |
+|--------|------|--------|
+| POST | `/api/v1/projects` | Create project |
+| POST | `/api/v1/projects/{id}/upload` | Ingest + index + optional embed |
+| GET | `/api/v1/projects/{id}/files` | File metadata only (no content, no chunks) |
+| GET | `/api/v1/health` | Health check |
 
 ---
 
-## Suggested next steps
+## Not Implemented Yet
 
-These follow the [Roadmap](ROADMAP.md) order and current codebase state.
+Compared to [ROADMAP.md](ROADMAP.md):
 
-1. **Operational:** `docker compose up --build` runs migrations through `0004` on backend start. Enable embeddings with `EMBEDDING_ENABLED=true` + `OPENAI_API_KEY`, then re-upload.
-2. **Phase 3:** Add project-scoped vector search (`ORDER BY embedding <=> query`) and a backend search endpoint.
-3. **Phase 3 UI:** Minimal search in the single-page app (optional after API).
-4. **Phase 4:** RAG + real Q&A.
-5. **Optional:** Git clone ingestion; reindex endpoint; HNSW tuning for large repos.
+### Phase 3 — Semantic Search
+
+- Retrieval service (`app/retrieval/` is a placeholder)
+- Vector similarity search API (project-scoped query embedding + pgvector)
+- Search UI
+- Result ranking and filtering
+- Context packaging for downstream AI
+
+### Phase 4 — AI Code Assistant
+
+- LLM integration beyond embeddings (`app/llm/`, `app/prompts/` placeholders)
+- RAG pipeline (retrieve chunks → prompt → answer)
+- Prompt construction
+- Conversation persistence
+- Source citations wired to real search results
+
+### Phase 5 — Developer Experience (Roadmap: Advanced Developer Tools)
+
+- Repository map / navigation
+- Dependency graph and relationship insights
+- Background indexing (upload path is synchronous today)
+- Performance tuning (HNSW params, batching, large repos)
+- Cost optimization (embedding batching exists; broader cost controls do not)
+
+### Other gaps (not full roadmap phases)
+
+- Authentication and multi-user projects
+- Git clone ingestion
+- Reindex API / project indexing status fields
+- Public API to list or inspect chunks
 
 ---
 
-## Current notes
+## Next Recommended Step
 
-### Stack
+**Milestone: Phase 3 — Semantic Search**
 
-- **Frontend:** Next.js (App Router), single-page workspace, off-white doc-style UI.
-- **Backend:** FastAPI, SQLAlchemy async, Alembic migrations.
-- **Database:** PostgreSQL (`pgvector/pgvector:pg16` in Compose); HNSW index on chunk embeddings; SQLite JSON fallback in unit tests.
+Implement in this order:
 
-### Backend behavior today
+1. **Backend retrieval service** — embed the user query (reuse embedding provider), run pgvector cosine search filtered by `project_id`, return chunk metadata + scores + snippets (not necessarily full file content).
+2. **Search API** — e.g. `POST /api/v1/projects/{id}/search` with `{ "query": "..." }`.
+3. **Frontend integration** — minimal search input and results list (after API is stable).
 
+Phase 4 should not start until retrieval returns ranked chunks reliably.
 
-| Endpoint                            | Behavior                                                                                                                                      |
-| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `POST /api/v1/projects`             | Create project                                                                                                                                |
-| `POST /api/v1/projects/{id}/upload` | ZIP → files → parse/chunk → optional embed; returns `files_discovered`, `chunks_created`, `embeddings_created`, `ingestion_status` |
-| `GET /api/v1/projects/{id}/files`   | File metadata only (no `content`, no chunks)                                                                                                  |
+---
 
+## Development Notes
 
-Indexing + embeddings on upload; migrations **`0001`–`0004`** via Alembic (backend container entrypoint).
-
-**Postgres integration tests:**  
-`CODECONTEXT_INTEGRATION_DATABASE_URL=postgresql+asyncpg://...@localhost:5432/... pytest -m integration`
-
-### Frontend
-
-- Upload and file list are wired to Phase 1 APIs.
-- Chunks and search are **not** shown in the UI yet (intentional for Phase 2A).
-
-### Explicitly out of scope until later phases
-
-- Semantic search UI/API (Phase 3)
-- LLM / RAG answers (Phase 4)
-- Authentication and multi-tenant projects
-
-Embeddings are **implemented but off by default** (`EMBEDDING_ENABLED=false` in `.env.example`).
-
-### Run locally
+### Docker setup
 
 ```bash
 docker compose up --build
 ```
 
-- Frontend: [http://localhost:3000](http://localhost:3000)
-- Backend: [http://localhost:8000](http://localhost:8000) — health at `/api/v1/health`
-- Set `NEXT_PUBLIC_API_URL` and `CORS_ORIGINS` for your environment (see `.env.example`).
+- **Frontend:** http://localhost:3000  
+- **Backend:** http://localhost:8000  
+- **DB:** PostgreSQL + pgvector on port `5432` (see `.env`)
+
+Backend container runs **`alembic upgrade head`** on start (`backend/docker-entrypoint.sh`).
+
+### Database and migrations
+
+- **Source of truth:** Alembic migrations `0001` → `0004` (not `init_db()` alone for production-shaped DBs).
+- **0003** (`0003_chunk_symbol_embedding`): `symbol_name`, embedding columns.
+- **0004**: HNSW index on PostgreSQL only.
+
+**Existing dev DBs** created before Alembic (tables from `init_db()` only):
+
+```bash
+docker compose exec backend alembic stamp 0002_create_code_chunks
+docker compose exec backend alembic upgrade head
+```
+
+Or reset the `postgres-data` Docker volume for a clean history.
+
+### Important environment variables
+
+| Variable | Role |
+|----------|------|
+| `DATABASE_URL` | Async Postgres URL for backend |
+| `NEXT_PUBLIC_API_URL` | Frontend → backend (e.g. `http://localhost:8000`) |
+| `CORS_ORIGINS` | Must include frontend origin |
+| `EMBEDDING_ENABLED` | Default `false`; set `true` to embed on upload |
+| `OPENAI_API_KEY` | Required when embeddings enabled |
+| `EMBEDDING_MODEL` | Default `text-embedding-3-small` |
+| `EMBEDDING_BATCH_SIZE` | Default `64` |
+| `DATA_DIR` | Upload/extraction data on disk |
+| `CODECONTEXT_INTEGRATION_DATABASE_URL` | Optional; enables Postgres integration pytest |
+
+Copy from `.env.example` to `.env` at repo root.
+
+### Tests
+
+From `backend/`:
+
+```bash
+python -m pytest -q
+```
+
+- **Default:** 26 passed, 1 skipped (integration test skipped without `CODECONTEXT_INTEGRATION_DATABASE_URL`).
+- **Postgres integration:**  
+  `CODECONTEXT_INTEGRATION_DATABASE_URL=postgresql+asyncpg://...@localhost:5432/... pytest -m integration`
+- Unit tests use **SQLite in-memory** with JSON embedding fallback (not pgvector).
+
+### Key code locations
+
+| Area | Path |
+|------|------|
+| Ingestion | `backend/app/services/ingestion_service.py` |
+| Indexing / chunking | `backend/app/indexing/`, `backend/app/services/indexing_service.py` |
+| Parsers | `backend/app/parsers/` |
+| Embeddings | `backend/app/embeddings/`, `backend/app/services/embedding_service.py` |
+| Vector types / index name | `backend/app/database/vector.py` |
+| Frontend app | `frontend/components/code-context-app.tsx` |
 
 ---
 
-## How to update this file
-
-When finishing a sub-phase (2B, 2C, …):
-
-1. Move its checklist items to **Completed (rollup)** or mark complete under the Phase 2 subsection.
-2. Set **In progress** to the slice you are actively building.
-3. Adjust **Suggested next steps** so the top item is the next logical Roadmap step.
-
+*When you ship a milestone, update this file: move items from **Not Implemented** to **Completed Work**, refresh **Current Capabilities**, and set **Next Recommended Step**.*
