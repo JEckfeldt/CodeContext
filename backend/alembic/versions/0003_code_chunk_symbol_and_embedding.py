@@ -5,7 +5,7 @@ import sqlalchemy as sa
 from pgvector.sqlalchemy import Vector
 
 
-revision = "0003_code_chunk_symbol_and_embedding"
+revision = "0003_chunk_symbol_embedding"
 down_revision = "0002_create_code_chunks"
 branch_labels = None
 depends_on = None

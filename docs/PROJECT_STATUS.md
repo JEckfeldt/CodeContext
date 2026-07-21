@@ -8,11 +8,11 @@ For planned phases and scope, see the [Roadmap](ROADMAP.md).
 
 ## Current milestone
 
-**Phase 2 — Code Indexing**
+**Phase 3 — Semantic Search** (next)
 
-Phase 1 is complete end-to-end (upload → browse files). Phase 2A (chunk persistence and line-based chunking) is complete. The active roadmap goal is to **prepare repositories for intelligent search**: smarter chunks, embeddings, and vector storage, as described in [Phase 2 of the Roadmap](ROADMAP.md#phase-2--code-indexing).
+**Phase 2 — Code Indexing** is **complete**. Repositories are ingested, parsed into chunks, optionally embedded, and vectors are indexed with **HNSW (cosine)** on PostgreSQL for Phase 3 retrieval.
 
-**Where we are now:** Every successful ZIP upload creates `File` rows, structured `CodeChunk` rows, and (when enabled) OpenAI embeddings stored on each chunk. Semantic search API/UI is still Phase 3; HNSW indexing is Phase 2D.
+**Where we are now:** Upload → chunk → embed (opt-in) → pgvector HNSW index. No search API or UI yet—that is Phase 3.
 
 ---
 
@@ -32,60 +32,29 @@ Phase 1 is complete end-to-end (upload → browse files). Phase 2A (chunk persis
 
 ---
 
-## Phase 2 — Code Indexing (in progress)
+## Phase 2 — Code Indexing (complete)
 
 Roadmap features: language-aware parsing, code chunking, embedding generation, vector storage (pgvector).  
-Roadmap outcome: *A repository becomes searchable by meaning, not just filenames.* **Not yet achieved.**
+Roadmap indexing outcome: *Prepare repositories for intelligent search* — **achieved** (vectors + HNSW ready; query API is Phase 3).
 
-### Phase 2A — Chunk foundation (complete)
+### Phase 2A–2C (complete)
 
-- [x] `CodeChunk` database model (`file_id`, `project_id`, line range, `content`, `language`, `chunk_kind`, etc.)
-- [x] Relationships: `File` → chunks, `Project` → chunks (cascade on delete / re-upload)
-- [x] Alembic migration `0002_create_code_chunks`
-- [x] Line-based chunking pipeline (~2000 characters, preserves `start_line` / `end_line`, `chunk_kind=text_block`)
-- [x] Indexing runs automatically after file persistence on upload
-- [x] Upload API reports `chunks_created`
-- [x] Unit tests (chunking) + integration test (upload creates chunks)
+- **2A:** `CodeChunk` model, line chunking, ingest-time indexing, migration `0002`
+- **2B:** Python/Markdown parsers, `symbol_name`, pipeline fallback
+- **2C:** OpenAI embeddings (opt-in), migration `0003_chunk_symbol_embedding`
 
-**Limitations (by design for 2A):** No AST or tree-sitter; no overlap tuning; no project-level indexing status or reindex API; frontend does not surface chunks.
+### Phase 2D — Vector storage (pgvector) (complete)
 
-### Phase 2B — Language-aware parsing (complete)
+- [x] HNSW index `ix_code_chunks_embedding_hnsw` on `code_chunks.embedding` with **`vector_cosine_ops`**
+- [x] Partial index `WHERE embedding IS NOT NULL`
+- [x] Alembic migration `0004_code_chunks_embedding_hnsw` (PostgreSQL only; no-op on other dialects)
+- [x] Backend Docker entrypoint runs **`alembic upgrade head`** before uvicorn
+- [x] SQLite tests keep **JSON** embedding fallback via `EmbeddingColumn`
+- [x] Postgres integration test (`pytest -m integration` + `CODECONTEXT_INTEGRATION_DATABASE_URL`)
 
-Aligns with Roadmap *“Language-aware parsing”* and better *“Code chunking”* than fixed-size text blocks.
+**Ops notes:** Default HNSW uses pgvector defaults. Tune `m` / `ef_construction` later if repos grow very large. Similarity queries should use the **`<=>` cosine distance** operator (same ops class as the index).
 
-- [x] Parser registry under `app/parsers/` (by `File.language`)
-- [x] Python: `ast`-based blocks (module preamble, functions, classes, methods)
-- [x] Markdown: split on headings (`markdown_section`, heading as `symbol_name` in parser blocks)
-- [x] Fallback: line-based chunker for JS/TS, config, unknown types, and invalid Python syntax
-- [x] Richer `chunk_kind` values (`function`, `class`, `method`, `module`, `markdown_section`, `text_block`)
-- [x] Pipeline: `File` → parser (if available) → size chunking → `CodeChunk`
-- [x] Tests: Python parser, Markdown parser, pipeline fallback
-- [x] Persist `symbol_name` on `CodeChunk` (migration `0003`)
-
-### Phase 2C — Embedding generation (complete)
-
-Aligns with Roadmap *“Embedding generation”*.
-
-- [x] Embedding provider abstraction (`app/embeddings/`) + OpenAI HTTP provider
-- [x] Config: `EMBEDDING_ENABLED` (default false), `EMBEDDING_MODEL`, `EMBEDDING_BATCH_SIZE`, `OPENAI_API_KEY`
-- [x] Embedding input text: file path, language, symbol, chunk content (does not modify stored `content`)
-- [x] `embedding_service.embed_project_chunks` — batch embed after indexing on upload
-- [x] Idempotent skip when `embedded_at` is set
-- [x] Tests with mocked provider (no live OpenAI in CI)
-- [x] Migration `0003`: `symbol_name`, `embedding`, `embedding_model`, `embedded_at`
-
-**Enable locally:** set `EMBEDDING_ENABLED=true` and a valid `OPENAI_API_KEY`, then run `alembic upgrade head` and re-upload.
-
-### Phase 2D — Vector storage (pgvector) (partial)
-
-Aligns with Roadmap *“Vector storage (pgvector)”*.
-
-- [x] Nullable `embedding` vector column on `code_chunks` (1536 dims, `text-embedding-3-small`)
-- [x] `EmbeddingColumn` type (pgvector on PostgreSQL, JSON fallback in SQLite tests)
-- [ ] HNSW / IVFFlat index on PostgreSQL for fast similarity search
-- [ ] Document production index tuning in ops notes
-
-**Depends on:** Phase 2C (done). Required before **Phase 3** search at scale.
+**Migration note:** Revision `0003` id shortened to `0003_chunk_symbol_embedding` (fits Alembic `version_num` 32-char limit). Existing DBs created only via `init_db()` should run `alembic stamp 0002_create_code_chunks` then `alembic upgrade head` once.
 
 ### Phase 2 — Cross-cutting (optional, as needed)
 
@@ -97,7 +66,7 @@ Aligns with Roadmap *“Vector storage (pgvector)”*.
 
 ## Phase 3 — Semantic Search (upcoming)
 
-See [Roadmap Phase 3](ROADMAP.md#phase-3--semantic-search). Blocked on **Phase 2D** (vectors in the database).
+See [Roadmap Phase 3](ROADMAP.md#phase-3--semantic-search). **Unblocked** — Phase 2 indexing infrastructure is ready.
 
 - [ ] Vector similarity search scoped by `project_id`
 - [ ] Search API + ranking / filters
@@ -139,12 +108,13 @@ See [Roadmap Phase 5](ROADMAP.md#phase-5--advanced-developer-tools).
 - [x] Phase 2A — CodeChunk persistence and line-based chunking on ingest
 - [x] Phase 2B — Language-aware parsing (Python, Markdown) + pipeline integration
 - [x] Phase 2C — Embedding generation (OpenAI, opt-in via `EMBEDDING_ENABLED`)
+- [x] Phase 2D — pgvector HNSW index (cosine) + Docker alembic on startup
 
 ---
 
 ## In progress
 
-**Nothing actively in flight.** Next recommended slice: **Phase 2D** (pgvector HNSW index) then **Phase 3** search.
+**Phase 3 — Semantic search API and retrieval** (recommended next).
 
 ---
 
@@ -152,12 +122,11 @@ See [Roadmap Phase 5](ROADMAP.md#phase-5--advanced-developer-tools).
 
 These follow the [Roadmap](ROADMAP.md) order and current codebase state.
 
-1. **Operational:** Run `alembic upgrade head` (includes `0003` symbol + embedding columns). Re-upload a ZIP; with embeddings off, `embeddings_created` is `0`.
-2. **Phase 2D:** Add HNSW index on `code_chunks.embedding` for PostgreSQL.
-3. **Phase 3:** Semantic search API + minimal UI using stored vectors.
-4. **Parallel / optional:** Git clone ingestion (Roadmap Phase 1 extension).
-5. **Phase 4:** Wire Q&A UI to retrieval + LLM.
-6. **Future parsing:** JS/TS structure-aware parsers if needed.
+1. **Operational:** `docker compose up --build` runs migrations through `0004` on backend start. Enable embeddings with `EMBEDDING_ENABLED=true` + `OPENAI_API_KEY`, then re-upload.
+2. **Phase 3:** Add project-scoped vector search (`ORDER BY embedding <=> query`) and a backend search endpoint.
+3. **Phase 3 UI:** Minimal search in the single-page app (optional after API).
+4. **Phase 4:** RAG + real Q&A.
+5. **Optional:** Git clone ingestion; reindex endpoint; HNSW tuning for large repos.
 
 ---
 
@@ -167,7 +136,7 @@ These follow the [Roadmap](ROADMAP.md) order and current codebase state.
 
 - **Frontend:** Next.js (App Router), single-page workspace, off-white doc-style UI.
 - **Backend:** FastAPI, SQLAlchemy async, Alembic migrations.
-- **Database:** PostgreSQL; pgvector extension enabled; chunk `embedding` column populated when `EMBEDDING_ENABLED=true`.
+- **Database:** PostgreSQL (`pgvector/pgvector:pg16` in Compose); HNSW index on chunk embeddings; SQLite JSON fallback in unit tests.
 
 ### Backend behavior today
 
@@ -179,7 +148,10 @@ These follow the [Roadmap](ROADMAP.md) order and current codebase state.
 | `GET /api/v1/projects/{id}/files`   | File metadata only (no `content`, no chunks)                                                                                                  |
 
 
-Indexing: `app/parsers/` → `app/indexing/pipeline.py` → `app/services/indexing_service.py`. Embeddings: `app/services/embedding_service.py` + `app/embeddings/` (skipped when disabled or missing API key).
+Indexing + embeddings on upload; migrations **`0001`–`0004`** via Alembic (backend container entrypoint).
+
+**Postgres integration tests:**  
+`CODECONTEXT_INTEGRATION_DATABASE_URL=postgresql+asyncpg://...@localhost:5432/... pytest -m integration`
 
 ### Frontend
 
