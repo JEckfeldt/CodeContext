@@ -95,13 +95,13 @@ export function CodeContextApp() {
       </section>
 
       <RepositorySearchSection
-        key={searchSession}
+        key={`search-${searchSession}`}
         projectId={ingested?.project.id ?? ""}
         disabled={!repositoryReady}
       />
 
       <RepositoryAskSection
-        key={askSession}
+        key={`ask-${askSession}`}
         projectId={ingested?.project.id ?? ""}
         disabled={!repositoryReady}
       />
