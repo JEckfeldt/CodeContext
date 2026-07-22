@@ -2,20 +2,24 @@
 
 import { useState } from "react";
 
+import { RepositoryAskSection } from "@/components/assistant/repository-ask-section";
 import {
   RepositoryUploader,
   type IngestedRepository,
 } from "@/components/repository/repository-uploader";
 import { FileBrowser } from "@/components/repository/file-browser";
 import { RepositoryView } from "@/components/repository/repository-view";
-import { RepositoryAskSection } from "@/components/assistant/repository-ask-section";
 import { RepositorySearchSection } from "@/components/search/repository-search-section";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/cn";
+
+type WorkspaceMode = "search" | "ask";
 
 export function CodeContextApp() {
   const [ingested, setIngested] = useState<IngestedRepository | null>(null);
   const [searchSession, setSearchSession] = useState(0);
   const [askSession, setAskSession] = useState(0);
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("search");
 
   function handleIngestSuccess(result: IngestedRepository) {
     setIngested(result);
@@ -26,85 +30,164 @@ export function CodeContextApp() {
   const repositoryReady = ingested !== null;
 
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-3xl flex-col px-5 py-10 sm:px-6 sm:py-14">
-      <header className="mb-10 space-y-5 border-b border-border pb-8">
-        <div className="flex items-center gap-3">
-          <div className="brand-mark flex h-9 w-9 items-center justify-center rounded-lg text-xs font-semibold">
+    <div className="min-h-screen bg-background">
+      <header className="sticky top-0 z-20 border-b border-border bg-surface/90 backdrop-blur-md">
+        <div className="mx-auto flex w-full max-w-6xl items-center gap-3 px-4 py-3 sm:px-6 lg:px-8">
+          <div className="brand-mark flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[11px] font-semibold">
             CC
           </div>
-          <div>
-            <p className="brand-wordmark text-base font-semibold tracking-tight">
-              CodeContext
+          <div className="min-w-0">
+            <p className="brand-wordmark truncate text-sm">CodeContext</p>
+            <p className="truncate text-xs text-muted-foreground">
+              Understand projects with search and AI
             </p>
-            <p className="text-xs text-muted-foreground">AI codebase workspace</p>
           </div>
-        </div>
-        <div className="space-y-2">
-          <h1 className="text-[1.75rem] font-semibold tracking-tight text-foreground sm:text-3xl">
-            Understand any codebase with AI
-          </h1>
-          <p className="max-w-2xl text-[0.9375rem] leading-7 text-muted">
-            Upload a repository, browse discovered files, search indexed code by
-            meaning, and ask grounded questions with citations.
-          </p>
         </div>
       </header>
 
-      <section className="mb-10 space-y-4">
-        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-          Connect repository
-        </p>
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <Button
-            type="button"
-            variant="secondary"
-            className="h-10 flex-1"
-            disabled
-            title="Git clone ingestion is not available in Phase 1"
-          >
-            Connect GitHub repository
-          </Button>
-        </div>
-        <p className="text-xs text-muted">
-          GitHub connection is planned for a later phase. Upload a ZIP archive to
-          ingest a repository today.
-        </p>
-
-        <RepositoryUploader onSuccess={handleIngestSuccess} />
-
-        {!repositoryReady ? (
-          <p className="text-sm leading-7 text-muted">
-            No repository loaded yet. Select a ZIP file and run upload to index the
-            codebase.
+      <main className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
+        <div className="mb-8 max-w-2xl">
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-[1.75rem]">
+            AI workspace for your project
+          </h1>
+          <p className="mt-2 text-sm leading-relaxed text-muted sm:text-[0.9375rem]">
+            Upload content, browse files, then search and explain in one workspace.
           </p>
-        ) : (
-          <div className="space-y-6">
-            <RepositoryView
-              name={ingested.project.name}
-              ingestionStatus={ingested.upload.ingestion_status}
-              fileCount={ingested.files.length}
-            />
-            <div className="space-y-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                Discovered files
+        </div>
+
+        <section aria-labelledby="connect-heading" className="panel p-5 sm:p-6 lg:p-7">
+          <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p id="connect-heading" className="section-label">
+                Repository
               </p>
-              <FileBrowser files={ingested.files} />
+              <p className="section-title mt-1">Connect a project</p>
+              <p className="mt-1 max-w-xl text-sm text-muted">
+                ZIP upload today. Git and additional formats are planned for later phases.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="w-full shrink-0 sm:w-auto"
+              disabled
+              title="Git clone ingestion is not available yet"
+            >
+              Connect GitHub
+            </Button>
+          </div>
+
+          <RepositoryUploader onSuccess={handleIngestSuccess} />
+
+          {!repositoryReady ? (
+            <div className="status-banner mt-5">
+              <p className="text-sm text-muted">
+                No project loaded. Select a ZIP archive and upload to index content for
+                search and explanations.
+              </p>
+            </div>
+          ) : (
+            <div className="mt-6 space-y-5 border-t border-border-subtle pt-6">
+              <RepositoryView
+                name={ingested.project.name}
+                ingestionStatus={ingested.upload.ingestion_status}
+                fileCount={ingested.files.length}
+              />
+              <div>
+                <p className="section-label mb-3">Discovered files</p>
+                <FileBrowser files={ingested.files} />
+              </div>
+            </div>
+          )}
+        </section>
+
+        <section
+          aria-labelledby="workspace-heading"
+          className="panel mt-8 flex min-h-[32rem] flex-col p-5 sm:mt-10 sm:p-6 lg:p-7"
+        >
+          <div className="mb-6 border-b border-border-subtle pb-5">
+            <p id="workspace-heading" className="section-label">
+              Project workspace
+            </p>
+            <p className="section-title mt-1">Search or explain</p>
+            <div
+              className="mt-4 flex w-full max-w-md rounded-lg border border-border bg-secondary-muted/70 p-1"
+              role="tablist"
+              aria-label="Workspace mode"
+            >
+              <button
+                type="button"
+                role="tab"
+                id="workspace-tab-search"
+                aria-selected={workspaceMode === "search"}
+                aria-controls="workspace-panel-search"
+                className={cn(
+                  "flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors sm:px-4",
+                  workspaceMode === "search"
+                    ? "bg-surface text-primary shadow-sm"
+                    : "text-muted hover:text-foreground",
+                )}
+                onClick={() => setWorkspaceMode("search")}
+              >
+                🔍 Search
+              </button>
+              <button
+                type="button"
+                role="tab"
+                id="workspace-tab-ask"
+                aria-selected={workspaceMode === "ask"}
+                aria-controls="workspace-panel-ask"
+                className={cn(
+                  "flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors sm:px-4",
+                  workspaceMode === "ask"
+                    ? "bg-surface text-primary shadow-sm"
+                    : "text-muted hover:text-foreground",
+                )}
+                onClick={() => setWorkspaceMode("ask")}
+              >
+                🤖 Explain
+              </button>
             </div>
           </div>
-        )}
-      </section>
 
-      <RepositorySearchSection
-        key={`search-${searchSession}`}
-        projectId={ingested?.project.id ?? ""}
-        disabled={!repositoryReady}
-      />
+          <div className="flex min-h-0 flex-1 flex-col">
+            <div
+              id="workspace-panel-search"
+              role="tabpanel"
+              aria-labelledby="workspace-tab-search"
+              hidden={workspaceMode !== "search"}
+              className={cn(
+                "flex min-h-[26rem] flex-1 flex-col",
+                workspaceMode !== "search" && "hidden",
+              )}
+            >
+              <RepositorySearchSection
+                key={`search-${searchSession}`}
+                projectId={ingested?.project.id ?? ""}
+                disabled={!repositoryReady}
+              />
+            </div>
 
-      <RepositoryAskSection
-        key={`ask-${askSession}`}
-        projectId={ingested?.project.id ?? ""}
-        disabled={!repositoryReady}
-      />
+            <div
+              id="workspace-panel-ask"
+              role="tabpanel"
+              aria-labelledby="workspace-tab-ask"
+              hidden={workspaceMode !== "ask"}
+              className={cn(
+                "flex min-h-[26rem] flex-1 flex-col",
+                workspaceMode !== "ask" && "hidden",
+              )}
+            >
+              <RepositoryAskSection
+                key={`ask-${askSession}`}
+                projectId={ingested?.project.id ?? ""}
+                disabled={!repositoryReady}
+              />
+            </div>
+          </div>
+        </section>
+      </main>
     </div>
   );
 }

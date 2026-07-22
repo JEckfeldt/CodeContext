@@ -30,18 +30,16 @@ export function RepositoryView({
     fileCount > 0;
 
   return (
-    <div className="surface-repository space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">
-            Active repository
-          </p>
+    <div className="surface-repository">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="section-label">Active project</p>
           <p className="mt-1 truncate font-mono text-sm font-medium text-foreground">
             {name}
           </p>
           <p className="mt-1 text-sm text-muted">
             {sourceLabel} · {fileCount} {fileCount === 1 ? "file" : "files"} ·{" "}
-            {ready ? "Ready for questions" : statusLabel(ingestionStatus)}
+            {ready ? "Ready to search and explain" : statusLabel(ingestionStatus)}
           </p>
         </div>
         <Badge

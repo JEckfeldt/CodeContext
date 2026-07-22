@@ -23,8 +23,8 @@ export function SearchResultCard({ hit }: SearchResultCardProps) {
   const truncated = isSnippetTruncated(hit.content);
 
   return (
-    <article className="surface-assistant space-y-3 rounded-lg border border-border p-4 sm:p-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <article className="surface-assistant space-y-3 p-4 sm:p-5">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
         <div className="min-w-0 flex-1 space-y-1">
           <p
             className="break-all font-mono text-sm font-medium text-foreground sm:truncate"
@@ -32,7 +32,7 @@ export function SearchResultCard({ hit }: SearchResultCardProps) {
           >
             {hit.file_path}
           </p>
-          <p className="text-xs leading-5 text-muted">
+          <p className="text-xs leading-5 text-muted-foreground">
             {formatLineRange(hit.start_line, hit.end_line)}
             {hit.symbol_name ? (
               <>
@@ -42,11 +42,11 @@ export function SearchResultCard({ hit }: SearchResultCardProps) {
             ) : null}
           </p>
         </div>
-        <Badge variant="secondary" className="w-fit shrink-0">
+        <Badge variant="primary" className="w-fit shrink-0">
           {formatSimilarity(hit.similarity)}
         </Badge>
       </div>
-      <CodeBlock code={displayContent} className="my-0 max-h-[min(320px,50vh)]" />
+      <CodeBlock code={displayContent} className="my-0 max-h-[min(280px,40vh)]" />
       {truncated ? (
         <p className="text-[11px] text-muted-foreground">Snippet truncated for display.</p>
       ) : null}

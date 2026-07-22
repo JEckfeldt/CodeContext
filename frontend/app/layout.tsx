@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "CodeContext",
-  description: "Understand any codebase with AI",
+  description: "Search and explain your project with AI",
 };
 
 export default function RootLayout({

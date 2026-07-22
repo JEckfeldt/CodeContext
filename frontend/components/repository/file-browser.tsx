@@ -15,22 +15,22 @@ export function FileBrowser({ files }: FileBrowserProps) {
 
   if (sorted.length === 0) {
     return (
-      <p className="text-sm leading-7 text-muted">No source files were discovered in this archive.</p>
+      <p className="text-sm text-muted">No files were discovered in this archive.</p>
     );
   }
 
   return (
-    <div className="overflow-hidden rounded-lg border border-border bg-[#0f172a]">
-      <ul className="max-h-[min(420px,50vh)] divide-y divide-white/10 overflow-y-auto">
+    <div className="overflow-hidden rounded-lg border border-border bg-secondary-muted/50">
+      <ul className="max-h-[min(360px,45vh)] divide-y divide-border overflow-y-auto">
         {sorted.map((file) => (
           <li
             key={file.id}
-            className="flex flex-col gap-0.5 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
+            className="flex flex-col gap-1 px-3 py-2.5 transition-colors hover:bg-surface sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-4"
           >
-            <code className="min-w-0 break-all font-mono text-[0.8125rem] leading-5 text-slate-100">
+            <code className="min-w-0 break-all font-mono text-[0.8125rem] leading-5 text-foreground">
               {file.path}
             </code>
-            <span className="shrink-0 font-mono text-[11px] text-slate-400">
+            <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
               {file.language ?? file.extension ?? "file"} · {formatSize(file.size)}
             </span>
           </li>

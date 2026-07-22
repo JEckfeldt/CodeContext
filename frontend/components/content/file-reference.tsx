@@ -32,9 +32,9 @@ export function FileReference({
   const hasLocation = startLine !== undefined && endLine !== undefined;
 
   return (
-    <div className="space-y-2">
-      <div className="space-y-1">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+    <div className="rounded-lg border border-border-subtle bg-secondary-muted/40 p-3 sm:p-4">
+      <div className="mb-2 space-y-1">
+        <p className="text-xs font-medium text-muted-foreground">
           {citationIndex !== undefined
             ? `Source [${citationIndex}]`
             : "Referenced file"}
@@ -51,7 +51,7 @@ export function FileReference({
           </p>
         ) : null}
       </div>
-      <CodeBlock path={path} language={inferredLanguage} code={snippet} />
+      <CodeBlock path={path} language={inferredLanguage} code={snippet} className="my-0" />
     </div>
   );
 }

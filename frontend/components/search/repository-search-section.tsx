@@ -50,60 +50,59 @@ export function RepositorySearchSection({
     status === "success" && submittedQuery !== null && results.length === 0;
 
   return (
-    <section className="flex flex-1 flex-col" aria-labelledby="repository-search-heading">
-      <p
-        id="repository-search-heading"
-        className="mb-4 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground"
-      >
-        Search repository
-      </p>
+    <section className="flex min-h-0 flex-1 flex-col" aria-labelledby="repository-search-heading">
+      <div className="mb-4">
+        <p id="repository-search-heading" className="section-label">
+          Search
+        </p>
+        <p className="mt-1 text-sm text-muted">
+          Search your project for relevant files, documents, and code.
+        </p>
+      </div>
 
       <div
-        className="mb-8 min-h-[10rem] space-y-4"
+        className="mb-5 min-h-[8rem] flex-1 space-y-3 overflow-y-auto"
         aria-live="polite"
         aria-busy={status === "loading"}
       >
         {showIntro ? (
-          <p className="max-w-[68ch] text-sm leading-7 text-muted">
-            Search indexed code with natural language. Results use semantic similarity
-            over ingested chunks. Enable{" "}
-            <span className="font-mono text-xs text-foreground">EMBEDDING_ENABLED</span>{" "}
-            and re-upload so vectors exist for search.
-          </p>
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-foreground">Search your project</p>
+            <p className="text-sm leading-relaxed text-muted">
+              Search across your indexed project to quickly find relevant files, documents,
+              and code snippets.
+            </p>
+          </div>
         ) : null}
 
         {status === "loading" ? (
-          <div className="rounded-lg border border-border bg-surface px-4 py-3">
-            <p className="text-sm leading-7 text-muted">Searching the repository…</p>
+          <div className="status-banner">
+            <p className="text-sm text-muted">Searching your project…</p>
           </div>
         ) : null}
 
         {status === "error" && error ? (
-          <div
-            className="rounded-lg border border-red-200 bg-red-50 px-4 py-3"
-            role="alert"
-          >
-            <p className="text-sm leading-7 text-red-800">{error}</p>
+          <div className="status-banner status-banner-error text-sm" role="alert">
+            {error}
           </div>
         ) : null}
 
         {showEmptyResults ? (
-          <div className="rounded-lg border border-border bg-surface px-4 py-3">
-            <p className="text-sm leading-7 text-muted">
-              No matching chunks for &ldquo;{submittedQuery}&rdquo;. Try a different
-              phrase, confirm embeddings were created on upload, or broaden your
-              question.
+          <div className="status-banner">
+            <p className="text-sm text-muted">
+              No matches for &ldquo;{submittedQuery}&rdquo;. Try different keywords or a
+              shorter phrase.
             </p>
           </div>
         ) : null}
 
         {results.length > 0 ? (
-          <div className="space-y-4">
-            <p className="text-sm text-muted">
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
               {results.length} result{results.length === 1 ? "" : "s"} for &ldquo;
               {submittedQuery}&rdquo;
             </p>
-            <ul className="space-y-4">
+            <ul className="space-y-3">
               {results.map((hit, index) => (
                 <li key={`${hit.file_path}-${hit.start_line}-${hit.end_line}-${index}`}>
                   <SearchResultCard hit={hit} />
@@ -114,13 +113,10 @@ export function RepositorySearchSection({
         ) : null}
       </div>
 
-      <form
-        onSubmit={(event) => void handleSearch(event)}
-        className="sticky bottom-0 mt-auto border-t border-border bg-background/95 pt-5 backdrop-blur-sm"
-      >
+      <form onSubmit={(event) => void handleSearch(event)} className="mt-auto pt-2">
         <div className="composer">
           <label htmlFor="repository-search-query" className="sr-only">
-            Search the repository
+            Search your project
           </label>
           <textarea
             id="repository-search-query"
@@ -128,19 +124,20 @@ export function RepositorySearchSection({
             onChange={(event) => setQuery(event.target.value)}
             placeholder={
               disabled
-                ? "Load a repository to search..."
-                : "Where is authentication implemented?"
+                ? "Upload a project to start searching..."
+                : "Search for files, functions, classes, topics, or keywords..."
             }
             disabled={disabled || status === "loading"}
             rows={3}
             className={cn(
-              "w-full resize-none border-0 bg-transparent px-1 py-1 text-[0.9375rem] leading-7 text-foreground outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:text-muted",
+              "w-full min-w-0 resize-none border-0 bg-transparent px-0.5 py-1 text-sm leading-relaxed text-foreground outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:text-muted sm:text-[0.9375rem]",
             )}
           />
-          <div className="mt-3 flex justify-end border-t border-border-subtle pt-3">
+          <div className="mt-3 flex flex-col gap-2 border-t border-border-subtle pt-3 sm:flex-row sm:justify-end">
             <Button
               type="submit"
-              variant="brand"
+              variant="primary"
+              className="w-full sm:w-auto"
               disabled={disabled || status === "loading" || !query.trim()}
             >
               {status === "loading" ? "Searching…" : "Search"}

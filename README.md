@@ -1,66 +1,62 @@
 # CodeContext
 
-AI-powered codebase assistant: ingest ZIP archives, index code into semantic chunks, search by meaning, and **ask grounded questions** with citations via RAG.
+Understand unfamiliar codebases: **upload a ZIP**, browse files, **find** relevant code, and **get AI explanations** with links back to real source files.
 
 ## MVP today
 
-- Upload a code repository (ZIP)
-- Browse discovered source files
-- **Search the codebase by meaning** (semantic similarity)
-- **Ask questions** and receive **grounded AI answers** with **source citations**
+- **Upload** a repository (ZIP)
+- **Browse** discovered source files
+- **Find Code** — search by meaning over indexed snippets
+- **Explain Code** — grounded AI answers with **source citations**
 
-## Documentation
+## How it works (UI)
 
-- [Roadmap](docs/ROADMAP.md) — phased plan and scope
-- [Project Status](docs/PROJECT_STATUS.md) — handoff and current capabilities
+```text
+Upload repository → Code workspace → Results
+                      ├─ Find Code    (search)
+                      └─ Explain Code (AI + citations)
+```
 
-## Semantic search
+In the app, pick **Find Code** or **Explain Code** in one workspace panel, enter a query, then review full-width results below.
 
-CodeContext embeds **chunks** and ranks them with **cosine similarity** in PostgreSQL (pgvector + HNSW).
+Details, API reference, and limitations: [Project Status](docs/PROJECT_STATUS.md) · [Roadmap](docs/ROADMAP.md)
 
-**`POST /api/v1/projects/{project_id}/search`** — body `{ "query": "…" }` → ranked `results` with snippets.
+## Find Code
 
-Requires **`EMBEDDING_ENABLED=true`**, **`OPENAI_API_KEY`**, and Postgres with pgvector. See [Project Status](docs/PROJECT_STATUS.md) for details.
+Locates files, functions, classes, and snippets that match your question.
 
-## AI Code Assistant (RAG)
+**API:** `POST /api/v1/projects/{project_id}/search`
 
-1. **Retrieve** — same vector search as semantic search (optional `top_k` on ask).
-2. **Prompt** — numbered code context blocks + grounding rules.
-3. **Complete** — OpenAI chat model (`LLM_ENABLED`).
-4. **Respond** — Markdown `answer` + structured `citations` (path, lines, symbol, snippet).
+```json
+{ "query": "Where is authentication handled?" }
+```
 
-**`POST /api/v1/projects/{project_id}/ask`**
+Requires indexed embeddings (`EMBEDDING_ENABLED`, OpenAI key, PostgreSQL + pgvector).
+
+## Explain Code
+
+Uses retrieved code as context, then returns a Markdown explanation plus citations (path, lines, symbol, snippet).
+
+**API:** `POST /api/v1/projects/{project_id}/ask`
 
 ```json
 { "question": "How does auth work?", "top_k": 8 }
 ```
 
-```json
-{
-  "project_id": "…",
-  "question": "…",
-  "answer": "…",
-  "citations": [{ "index": 1, "file_path": "…", "start_line": 1, "end_line": 10, "symbol_name": null, "snippet": "…", "similarity": 0.9 }]
-}
-```
+Requires embeddings **and** LLM enabled (`LLM_ENABLED`, same OpenAI key).
 
-Ask requires **embeddings + LLM** enabled and the same Postgres stack as search.
+## Environment
 
-### Required environment variables
-
-Copy [`.env.example`](.env.example) to `.env`.
+Copy [`.env.example`](.env.example) to `.env`. Key variables:
 
 | Variable | Purpose |
 |----------|---------|
-| `DATABASE_URL` | Backend → PostgreSQL (async) |
-| `NEXT_PUBLIC_API_URL` | Frontend → backend API |
-| `CORS_ORIGINS` | Browser origin for API |
-| `EMBEDDING_ENABLED` | Embed chunks on upload and search/ask queries |
-| `LLM_ENABLED` | Enable chat completions for `/ask` |
-| `OPENAI_API_KEY` | Required when embeddings or LLM are enabled |
-| `EMBEDDING_MODEL` / `LLM_MODEL` | OpenAI model names |
-| `EMBEDDING_BATCH_SIZE` | Chunk embedding batch size |
-| `LLM_MAX_TOKENS` | Completion token cap |
+| `DATABASE_URL` | PostgreSQL (async) |
+| `NEXT_PUBLIC_API_URL` | Frontend → API |
+| `CORS_ORIGINS` | Browser origin |
+| `EMBEDDING_ENABLED` | Index + search / retrieve |
+| `LLM_ENABLED` | Explain Code completions |
+| `OPENAI_API_KEY` | Embeddings + LLM when enabled |
 
 ## Run locally
 
@@ -68,14 +64,14 @@ Copy [`.env.example`](.env.example) to `.env`.
 docker compose up --build
 ```
 
-- Frontend: http://localhost:3000  
-- Backend: http://localhost:8000 (`/api/v1/health`)
+- App: http://localhost:3000  
+- API: http://localhost:8000 (`/api/v1/health`)
 
 ## Screenshots
 
-<!-- TODO: add screenshot — repository upload and file list -->
-<!-- TODO: add screenshot — semantic search results -->
-<!-- TODO: add screenshot — Ask CodeContext answer with citations -->
+<!-- TODO: screenshot — repository upload and file list -->
+<!-- TODO: screenshot — Find Code results -->
+<!-- TODO: screenshot — Explain Code answer with citations -->
 
 ## Tests
 
@@ -84,7 +80,7 @@ cd backend && python -m pytest -q    # 58 passed, 1 skipped (default)
 cd frontend && npm run build
 ```
 
-Optional Postgres integration: `CODECONTEXT_INTEGRATION_DATABASE_URL=... pytest -m integration`
+Optional: `CODECONTEXT_INTEGRATION_DATABASE_URL=... pytest -m integration`
 
 ## License
 

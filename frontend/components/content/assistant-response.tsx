@@ -30,13 +30,11 @@ export function AssistantResponse({
   const showLegacy = !showCitations && references && references.length > 0;
 
   return (
-    <div className={cn("surface-assistant space-y-5 rounded-lg border border-border p-4 sm:p-5", className)}>
+    <div className={cn("surface-assistant space-y-4 p-4 sm:p-5", className)}>
       <MarkdownContent content={markdown} />
       {showCitations ? (
-        <div className="space-y-4 border-t border-[color-mix(in_srgb,var(--accent-purple)_14%,var(--border))] pt-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            Sources
-          </p>
+        <div className="space-y-4 border-t border-border pt-4">
+          <p className="section-label">Sources</p>
           {citations.map((citation) => (
             <FileReference
               key={citationKey(citation)}
@@ -51,7 +49,7 @@ export function AssistantResponse({
         </div>
       ) : null}
       {showLegacy ? (
-        <div className="space-y-4 border-t border-[color-mix(in_srgb,var(--accent-purple)_14%,var(--border))] pt-4">
+        <div className="space-y-4 border-t border-border pt-4">
           {references.map((reference, index) => (
             <FileReference
               key={`${reference.path}-${index}`}

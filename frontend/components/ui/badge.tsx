@@ -5,8 +5,8 @@ type BadgeVariant = "default" | "primary" | "secondary" | "outline";
 
 const variantStyles: Record<BadgeVariant, string> = {
   default: "bg-border-subtle text-muted",
-  primary: "bg-primary-muted text-[#1d4ed8]",
-  secondary: "bg-accent-purple-muted text-[#6d28d9]",
+  primary: "bg-primary-muted text-[#1e40af]",
+  secondary: "bg-accent-navy-muted text-accent-navy",
   outline: "border border-border bg-surface text-muted",
 };
 

@@ -4,30 +4,30 @@
 export function formatAssistantErrorMessage(rawMessage: string): string {
   const message = rawMessage.trim();
   if (!message) {
-    return "Could not get an answer. Please try again.";
+    return "Could not get an explanation. Please try again.";
   }
 
   if (message.includes("LLM_ENABLED") || message.includes("LLM provider is not configured")) {
-    return "AI answers are disabled. Set LLM_ENABLED=true and OPENAI_API_KEY, then restart the backend.";
+    return "AI explanations are turned off on the server. Ask your administrator to enable the AI service, then try again.";
   }
 
   if (
     message.includes("EMBEDDING_ENABLED") ||
     message.includes("Embedding provider is not configured")
   ) {
-    return "Semantic retrieval is unavailable. Set EMBEDDING_ENABLED=true and OPENAI_API_KEY, re-upload the repository, then try again.";
+    return "Search is not set up on the server yet. Re-upload your project after indexing is enabled, then try again.";
   }
 
   if (message.includes("PostgreSQL") || message.includes("pgvector")) {
-    return "Semantic search requires PostgreSQL with pgvector. Use the Docker stack or point the backend at a Postgres database.";
+    return "The app could not reach the database used for search. Check that the backend is running with the full Docker setup.";
   }
 
   if (message.includes("OpenAI chat completion failed") || message.includes("chat completion")) {
-    return "The AI service failed to generate an answer. Check your API key and try again in a moment.";
+    return "The AI service could not finish your request. Wait a moment and try again.";
   }
 
   if (message.includes("Project") && message.includes("not found")) {
-    return "This project could not be found. Upload the repository again.";
+    return "This project could not be found. Upload your content again.";
   }
 
   return message;
