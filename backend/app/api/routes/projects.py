@@ -5,11 +5,14 @@ from fastapi import APIRouter, File, HTTPException, UploadFile, status
 
 from app.core.config import settings
 from app.core.deps import DbSession
+from app.llm.exceptions import LLMCompletionError, LLMUnavailableError
 from app.retrieval import search_similar_chunks
 from app.retrieval.exceptions import QueryEmbeddingError, SemanticSearchUnavailableError
 from app.schemas import (
     ChunkSearchHit,
     FileRead,
+    ProjectAskRequest,
+    ProjectAskResponse,
     ProjectCreate,
     ProjectRead,
     ProjectSearchRequest,
@@ -17,6 +20,7 @@ from app.schemas import (
     ProjectUploadResponse,
 )
 from app.services import project_service
+from app.services.assistant_service import ask_question
 from app.services.ingestion_service import ingestion_service
 from app.services.project_service import ProjectNotFoundError
 
@@ -114,3 +118,36 @@ async def search_project(
         query=payload.query,
         results=[ChunkSearchHit.model_validate(hit) for hit in results],
     )
+
+
+@router.post("/{project_id}/ask", response_model=ProjectAskResponse)
+async def ask_project(
+    project_id: uuid.UUID,
+    payload: ProjectAskRequest,
+    session: DbSession,
+) -> ProjectAskResponse:
+    """Answer a question about a project using retrieval-augmented generation."""
+    try:
+        result = await ask_question(
+            session,
+            project_id,
+            payload.question,
+            limit=payload.top_k,
+        )
+    except ProjectNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except (
+        SemanticSearchUnavailableError,
+        QueryEmbeddingError,
+        LLMUnavailableError,
+        LLMCompletionError,
+    ) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+
+    return ProjectAskResponse.from_assistant_result(result)
