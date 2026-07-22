@@ -38,3 +38,25 @@ export type ProjectSearchResponse = {
   query: string;
   results: ChunkSearchHit[];
 };
+
+export type SourceCitation = {
+  index: number;
+  file_path: string;
+  start_line: number;
+  end_line: number;
+  symbol_name: string | null;
+  snippet: string;
+  similarity: number;
+};
+
+export type ProjectAskRequest = {
+  question: string;
+  top_k?: number;
+};
+
+export type ProjectAskResponse = {
+  project_id: string;
+  question: string;
+  answer: string;
+  citations: SourceCitation[];
+};
