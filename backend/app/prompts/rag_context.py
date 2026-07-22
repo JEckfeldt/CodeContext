@@ -50,6 +50,19 @@ def truncate_snippet(
     return snippet
 
 
+def snippet_preview_for_chunk(
+    chunk: ChunkSearchResult,
+    limits: RagContextLimits | None = None,
+) -> str:
+    """Snippet text used in prompt blocks and API citations."""
+    effective_limits = limits or DEFAULT_RAG_CONTEXT_LIMITS
+    return truncate_snippet(
+        chunk.content,
+        max_lines=effective_limits.max_chunk_lines,
+        max_chars=effective_limits.max_chunk_chars,
+    )
+
+
 def format_line_range(start_line: int, end_line: int) -> str:
     if start_line == end_line:
         return f"line {start_line}"
@@ -67,41 +80,65 @@ def format_chunk_header(index: int, chunk: ChunkSearchResult) -> str:
 def format_chunk_block(
     index: int,
     chunk: ChunkSearchResult,
-    limits: RagContextLimits = DEFAULT_RAG_CONTEXT_LIMITS,
+    limits: RagContextLimits | None = None,
 ) -> str:
     """Format a single numbered chunk block."""
-    snippet = truncate_snippet(
-        chunk.content,
-        max_lines=limits.max_chunk_lines,
-        max_chars=limits.max_chunk_chars,
-    )
+    effective_limits = limits or DEFAULT_RAG_CONTEXT_LIMITS
+    snippet = snippet_preview_for_chunk(chunk, effective_limits)
     header = format_chunk_header(index, chunk)
     return f"{header}\n\n{snippet}"
 
 
+def select_rag_context_chunks(
+    chunks: list[ChunkSearchResult],
+    limits: RagContextLimits | None = None,
+) -> list[ChunkSearchResult]:
+    """Return chunks that are included in the RAG prompt (same order as [1], [2], …)."""
+    effective_limits = limits or DEFAULT_RAG_CONTEXT_LIMITS
+    if not chunks:
+        return []
+
+    candidates = chunks[: effective_limits.max_chunks]
+    included: list[ChunkSearchResult] = []
+    total_chars = 0
+
+    for index, chunk in enumerate(candidates, start=1):
+        block = format_chunk_block(index, chunk, effective_limits)
+        separator_len = 2 if included else 0
+        projected = total_chars + separator_len + len(block)
+        if included and projected > effective_limits.max_total_context_chars:
+            break
+
+        included.append(chunk)
+
+        if len(included) == 1 and len(block) > effective_limits.max_total_context_chars:
+            break
+
+        total_chars += separator_len + len(block)
+
+    return included
+
+
 def format_retrieved_chunks(
     chunks: list[ChunkSearchResult],
-    limits: RagContextLimits = DEFAULT_RAG_CONTEXT_LIMITS,
+    limits: RagContextLimits | None = None,
 ) -> str:
     """Format retrieval hits into numbered context blocks with truncation."""
+    effective_limits = limits or DEFAULT_RAG_CONTEXT_LIMITS
     if not chunks:
         return EMPTY_RETRIEVAL_CONTEXT
 
-    selected = chunks[: limits.max_chunks]
-    blocks: list[str] = []
-    total_chars = 0
+    included = select_rag_context_chunks(chunks, effective_limits)
+    if not included:
+        return EMPTY_RETRIEVAL_CONTEXT
 
-    for index, chunk in enumerate(selected, start=1):
-        block = format_chunk_block(index, chunk, limits)
-        separator_len = 2 if blocks else 0
-        projected = total_chars + separator_len + len(block)
-        if blocks and projected > limits.max_total_context_chars:
-            break
-        if not blocks and len(block) > limits.max_total_context_chars:
-            block = block[: limits.max_total_context_chars].rstrip()
+    blocks: list[str] = []
+    for index, chunk in enumerate(included, start=1):
+        block = format_chunk_block(index, chunk, effective_limits)
+        if not blocks and len(block) > effective_limits.max_total_context_chars:
+            block = block[: effective_limits.max_total_context_chars].rstrip()
             if not block.endswith("…"):
                 block = f"{block}\n…"
         blocks.append(block)
-        total_chars += separator_len + len(block)
 
     return "\n\n".join(blocks)

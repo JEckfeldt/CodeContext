@@ -10,7 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.llm.base import ChatMessage, ChatProvider
 from app.llm.exceptions import LLMUnavailableError
 from app.llm.provider import get_chat_provider
-from app.prompts.rag_context import DEFAULT_RAG_CONTEXT_LIMITS, truncate_snippet
+from app.prompts.rag_context import (
+    DEFAULT_RAG_CONTEXT_LIMITS,
+    RagContextLimits,
+    select_rag_context_chunks,
+    snippet_preview_for_chunk,
+)
 from app.prompts.rag_messages import build_rag_messages
 from app.retrieval.retrieval_service import DEFAULT_TOP_K, search_similar_chunks
 from app.retrieval.types import ChunkSearchResult
@@ -40,8 +45,12 @@ class AssistantResult:
     retrieved_chunks: list[ChunkSearchResult]
 
 
-def _build_citations(chunks: list[ChunkSearchResult]) -> list[SourceCitation]:
-    limits = DEFAULT_RAG_CONTEXT_LIMITS
+def _build_citations(
+    context_chunks: list[ChunkSearchResult],
+    limits: RagContextLimits | None = None,
+) -> list[SourceCitation]:
+    """Build citations for chunks actually included in the LLM prompt."""
+    effective_limits = limits or DEFAULT_RAG_CONTEXT_LIMITS
     return [
         SourceCitation(
             index=index,
@@ -49,14 +58,10 @@ def _build_citations(chunks: list[ChunkSearchResult]) -> list[SourceCitation]:
             start_line=chunk.start_line,
             end_line=chunk.end_line,
             symbol_name=chunk.symbol_name,
-            snippet=truncate_snippet(
-                chunk.content,
-                max_lines=limits.max_chunk_lines,
-                max_chars=limits.max_chunk_chars,
-            ),
+            snippet=snippet_preview_for_chunk(chunk, effective_limits),
             similarity=chunk.similarity,
         )
-        for index, chunk in enumerate(chunks, start=1)
+        for index, chunk in enumerate(context_chunks, start=1)
     ]
 
 
@@ -96,7 +101,8 @@ async def ask_question(
         limit=effective_limit,
     )
 
-    messages = build_rag_messages(trimmed_question, retrieved_chunks)
+    context_chunks = select_rag_context_chunks(retrieved_chunks)
+    messages = build_rag_messages(trimmed_question, context_chunks)
 
     if history:
         # Multi-turn support will prepend/append turns without changing retrieval.
@@ -114,6 +120,6 @@ async def ask_question(
         project_id=project_id,
         question=trimmed_question,
         answer=answer,
-        citations=_build_citations(retrieved_chunks),
+        citations=_build_citations(context_chunks),
         retrieved_chunks=retrieved_chunks,
     )

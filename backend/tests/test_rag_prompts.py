@@ -3,6 +3,7 @@ from app.prompts import (
     RagContextLimits,
     build_rag_messages,
     format_retrieved_chunks,
+    select_rag_context_chunks,
     truncate_snippet,
 )
 from app.retrieval.types import ChunkSearchResult
@@ -70,9 +71,25 @@ def test_format_retrieved_chunks_respects_total_char_budget() -> None:
         max_total_context_chars=900,
     )
     context = format_retrieved_chunks(chunks, limits)
-    assert len(context) <= 900 + 4
-    assert "[1]" in context
+    included = select_rag_context_chunks(chunks, limits)
+    assert len(included) >= 1
     assert "[5]" not in context
+    assert context.count("### [") == len(included)
+
+
+def test_select_rag_context_chunks_aligns_with_prompt_headers() -> None:
+    import re
+
+    chunks = [
+        _sample_chunk(file_path=f"{index}.py", content="y" * 400)
+        for index in range(4)
+    ]
+    limits = RagContextLimits(max_total_context_chars=1200)
+    included = select_rag_context_chunks(chunks, limits)
+    context = format_retrieved_chunks(chunks, limits)
+    headers = re.findall(r"### \[(\d+)\]", context)
+    assert len(included) == len(headers)
+    assert headers == [str(index) for index in range(1, len(included) + 1)]
 
 
 def test_empty_retrieval_context_message() -> None:

@@ -7,6 +7,7 @@ from app.llm.base import ChatMessage
 from app.llm.exceptions import LLMCompletionError, LLMUnavailableError
 from app.retrieval.exceptions import QueryEmbeddingError, SemanticSearchUnavailableError
 from app.retrieval.types import ChunkSearchResult
+from app.prompts.rag_context import select_rag_context_chunks
 from app.services import assistant_service
 from app.services.assistant_service import ask_question
 
@@ -70,7 +71,10 @@ async def test_ask_question_orchestrates_search_prompt_and_llm(
         "Where is auth?",
         limit=4,
     )
-    build_mock.assert_called_once_with("Where is auth?", chunks)
+    build_mock.assert_called_once_with(
+        "Where is auth?",
+        select_rag_context_chunks(chunks),
+    )
     assert mock_provider.messages_calls == [
         [
             {"role": "system", "content": "system"},
@@ -192,3 +196,58 @@ async def test_ask_question_citations_preserve_retrieval_order(
         "second.py",
         "third.py",
     ]
+
+
+@pytest.mark.asyncio
+async def test_ask_question_citations_match_prompt_context_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import re
+
+    from app.prompts.rag_context import RagContextLimits
+
+    limits = RagContextLimits(
+        max_chunks=5,
+        max_chunk_lines=100,
+        max_chunk_chars=500,
+        max_total_context_chars=550,
+    )
+    monkeypatch.setattr(assistant_service, "DEFAULT_RAG_CONTEXT_LIMITS", limits)
+    monkeypatch.setattr(
+        "app.prompts.rag_context.DEFAULT_RAG_CONTEXT_LIMITS",
+        limits,
+    )
+
+    large_chunks = [
+        ChunkSearchResult(
+            file_path=f"src/file_{index}.py",
+            content="x" * 500,
+            start_line=1,
+            end_line=20,
+            symbol_name=f"sym_{index}",
+            similarity=0.9 - index * 0.01,
+        )
+        for index in range(5)
+    ]
+    monkeypatch.setattr(
+        assistant_service,
+        "search_similar_chunks",
+        AsyncMock(return_value=large_chunks),
+    )
+    provider = MockChatProvider("See [1].")
+
+    result = await ask_question(
+        AsyncMock(),
+        uuid.uuid4(),
+        "large context test",
+        provider=provider,
+    )
+
+    user_content = provider.messages_calls[0][1]["content"]
+    header_indexes = [int(match) for match in re.findall(r"### \[(\d+)\]", user_content)]
+
+    assert len(result.citations) == len(header_indexes)
+    assert len(result.citations) < len(large_chunks)
+    assert result.citations[0].index == 1
+    assert [citation.index for citation in result.citations] == header_indexes
+    assert len(result.retrieved_chunks) == len(large_chunks)

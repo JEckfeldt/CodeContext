@@ -5,6 +5,7 @@ import { useState } from "react";
 import { AssistantResponse } from "@/components/content/assistant-response";
 import { Button } from "@/components/ui/button";
 import { askProject } from "@/lib/api";
+import { formatAssistantErrorMessage } from "@/lib/format-assistant-error";
 import { cn } from "@/lib/cn";
 import type { SourceCitation } from "@/types";
 
@@ -40,7 +41,11 @@ export function RepositoryAskSection({
     } catch (err) {
       setAnswer(null);
       setCitations([]);
-      setError(err instanceof Error ? err.message : "Could not get an answer.");
+      setError(
+        err instanceof Error
+          ? formatAssistantErrorMessage(err.message)
+          : "Could not get an answer.",
+      );
     } finally {
       setLoading(false);
     }
@@ -98,6 +103,12 @@ export function RepositoryAskSection({
               </p>
             ) : null}
             <AssistantResponse markdown={answer} citations={citations} />
+            {citations.length === 0 ? (
+              <p className="text-sm leading-7 text-muted">
+                No source snippets were retrieved for this question. The answer may
+                state that repository context was insufficient.
+              </p>
+            ) : null}
           </div>
         ) : null}
       </div>

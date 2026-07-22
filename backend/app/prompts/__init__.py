@@ -10,6 +10,8 @@ from app.prompts.rag_context import (
     RagContextLimits,
     format_chunk_block,
     format_retrieved_chunks,
+    select_rag_context_chunks,
+    snippet_preview_for_chunk,
     truncate_snippet,
 )
 from app.prompts.rag_messages import build_rag_messages, build_user_content
@@ -28,5 +30,7 @@ __all__ = [
     "build_user_content",
     "format_chunk_block",
     "format_retrieved_chunks",
+    "select_rag_context_chunks",
+    "snippet_preview_for_chunk",
     "truncate_snippet",
 ]
