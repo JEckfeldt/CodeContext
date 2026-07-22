@@ -8,16 +8,19 @@ import {
 } from "@/components/repository/repository-uploader";
 import { FileBrowser } from "@/components/repository/file-browser";
 import { RepositoryView } from "@/components/repository/repository-view";
+import { RepositoryAskSection } from "@/components/assistant/repository-ask-section";
 import { RepositorySearchSection } from "@/components/search/repository-search-section";
 import { Button } from "@/components/ui/button";
 
 export function CodeContextApp() {
   const [ingested, setIngested] = useState<IngestedRepository | null>(null);
   const [searchSession, setSearchSession] = useState(0);
+  const [askSession, setAskSession] = useState(0);
 
   function handleIngestSuccess(result: IngestedRepository) {
     setIngested(result);
     setSearchSession((value) => value + 1);
+    setAskSession((value) => value + 1);
   }
 
   const repositoryReady = ingested !== null;
@@ -41,8 +44,8 @@ export function CodeContextApp() {
             Understand any codebase with AI
           </h1>
           <p className="max-w-2xl text-[0.9375rem] leading-7 text-muted">
-            Upload a repository, browse discovered files, and search indexed code
-            by meaning. AI-generated answers arrive in a later phase.
+            Upload a repository, browse discovered files, search indexed code by
+            meaning, and ask grounded questions with citations.
           </p>
         </div>
       </header>
@@ -93,6 +96,12 @@ export function CodeContextApp() {
 
       <RepositorySearchSection
         key={searchSession}
+        projectId={ingested?.project.id ?? ""}
+        disabled={!repositoryReady}
+      />
+
+      <RepositoryAskSection
+        key={askSession}
         projectId={ingested?.project.id ?? ""}
         disabled={!repositoryReady}
       />
