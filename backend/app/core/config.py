@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     embedding_enabled: bool = False
     embedding_model: str = "text-embedding-3-small"
     embedding_batch_size: int = 64
+    llm_enabled: bool = False
+    llm_model: str = "gpt-4o-mini"
+    llm_max_tokens: int = 2048
+    llm_timeout_seconds: float = 120.0
 
     @field_validator("cors_origins", mode="before")
     @classmethod
