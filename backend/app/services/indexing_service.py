@@ -3,7 +3,8 @@ import uuid
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.indexing.pipeline import build_file_chunks
+from app.ingestion.models import ExtractedDocument
+from app.indexing.pipeline import build_document_chunks
 from app.models import CodeChunk, File
 from app.services import project_service
 
@@ -23,7 +24,8 @@ async def index_project_files(session: AsyncSession, project_id: uuid.UUID) -> i
 
 
 async def _index_file(session: AsyncSession, file: File) -> int:
-    drafts = build_file_chunks(file.content, file.language)
+    document = ExtractedDocument.from_persisted_file(file)
+    drafts = build_document_chunks(document)
     for draft in drafts:
         session.add(
             CodeChunk(

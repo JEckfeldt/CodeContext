@@ -1,6 +1,9 @@
 import os
 
 os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
+# Keep optional features off during tests unless a fixture explicitly enables them.
+os.environ["EMBEDDING_ENABLED"] = "false"
+os.environ["LLM_ENABLED"] = "false"
 
 import pytest
 from httpx import ASGITransport, AsyncClient

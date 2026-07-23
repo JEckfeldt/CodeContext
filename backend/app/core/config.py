@@ -1,10 +1,31 @@
+import sys
+from pathlib import Path
+
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_ENV_FILE = _REPO_ROOT / ".env"
+
+
+def _settings_env_file() -> Path | None:
+    """
+    Load the repo-root ``.env`` for local/dev runs.
+
+    During pytest, skip the dotenv file so ``Settings`` field defaults (e.g.
+    ``embedding_enabled=False``) define behavior instead of a developer ``.env``
+    that may enable embeddings for day-to-day work.
+    """
+    if "pytest" in sys.modules:
+        return None
+    if _ENV_FILE.is_file():
+        return _ENV_FILE
+    return None
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=_settings_env_file(),
         env_file_encoding="utf-8",
         extra="ignore",
     )
