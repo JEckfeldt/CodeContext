@@ -1,4 +1,5 @@
 from datetime import datetime
+from enum import Enum
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -6,6 +7,15 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class ProjectCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
+
+
+class ProjectImportSourceType(str, Enum):
+    git = "git"
+
+
+class ProjectImportRequest(BaseModel):
+    source_type: ProjectImportSourceType
+    url: str = Field(min_length=1)
 
 
 class ProjectRead(BaseModel):

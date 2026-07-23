@@ -10,7 +10,6 @@ import {
 import { FileBrowser } from "@/components/repository/file-browser";
 import { RepositoryView } from "@/components/repository/repository-view";
 import { RepositorySearchSection } from "@/components/search/repository-search-section";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 
 type WorkspaceMode = "search" | "ask";
@@ -56,26 +55,16 @@ export function CodeContextApp() {
         </div>
 
         <section aria-labelledby="connect-heading" className="panel p-5 sm:p-6 lg:p-7">
-          <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="mb-5">
             <div>
               <p id="connect-heading" className="section-label">
                 Repository
               </p>
               <p className="section-title mt-1">Connect a project</p>
               <p className="mt-1 max-w-xl text-sm text-muted">
-                ZIP upload today. Git and additional formats are planned for later phases.
+                Upload a ZIP archive or import from a public Git repository URL.
               </p>
             </div>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              className="w-full shrink-0 sm:w-auto"
-              disabled
-              title="Git clone ingestion is not available yet"
-            >
-              Connect GitHub
-            </Button>
           </div>
 
           <RepositoryUploader onSuccess={handleIngestSuccess} />
@@ -83,7 +72,7 @@ export function CodeContextApp() {
           {!repositoryReady ? (
             <div className="status-banner mt-5">
               <p className="text-sm text-muted">
-                No project loaded. Select a ZIP archive and upload to index content for
+                No project loaded. Upload a ZIP or import a Git URL to index content for
                 search and explanations.
               </p>
             </div>

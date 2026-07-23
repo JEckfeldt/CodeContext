@@ -63,6 +63,18 @@ export async function uploadRepository(
   return parseJson<UploadResult>(response);
 }
 
+export async function importGitRepository(
+  projectId: string,
+  url: string,
+): Promise<UploadResult> {
+  const response = await fetch(`${getApiBaseUrl()}/projects/${projectId}/import`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ source_type: "git", url: url.trim() }),
+  });
+  return parseJson<UploadResult>(response);
+}
+
 export async function listProjectFiles(projectId: string): Promise<FileRecord[]> {
   const response = await fetch(`${getApiBaseUrl()}/projects/${projectId}/files`);
   return parseJson<FileRecord[]>(response);
@@ -94,4 +106,19 @@ export async function askProject(
 
 export function projectNameFromZipFilename(filename: string): string {
   return filename.replace(/\.zip$/i, "") || "repository";
+}
+
+export function projectNameFromGitUrl(url: string): string {
+  const trimmed = url.trim();
+  if (!trimmed) return "repository";
+
+  try {
+    const parsed = new URL(trimmed);
+    const segments = parsed.pathname.split("/").filter(Boolean);
+    const repo = segments.at(-1)?.replace(/\.git$/i, "") ?? "repository";
+    const owner = segments.length >= 2 ? segments.at(-2) : null;
+    return owner ? `${owner}-${repo}` : repo;
+  } catch {
+    return "repository";
+  }
 }

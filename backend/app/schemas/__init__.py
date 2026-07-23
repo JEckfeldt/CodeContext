@@ -6,6 +6,8 @@ from app.schemas.assistant import (
 from app.schemas.project import (
     FileRead,
     ProjectCreate,
+    ProjectImportRequest,
+    ProjectImportSourceType,
     ProjectRead,
     ProjectUploadResponse,
 )
@@ -16,6 +18,8 @@ __all__ = [
     "FileRead",
     "ProjectAskRequest",
     "ProjectAskResponse",
+    "ProjectImportRequest",
+    "ProjectImportSourceType",
     "ProjectCreate",
     "ProjectRead",
     "ProjectSearchRequest",

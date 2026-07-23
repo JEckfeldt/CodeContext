@@ -19,5 +19,17 @@ class IngestionService:
             upload_path,
         )
 
+    async def ingest_git_url(
+        self,
+        session: AsyncSession,
+        project_id: uuid.UUID,
+        url: str,
+    ) -> dict[str, object]:
+        return await ingestion_pipeline.ingest_git_url(
+            session,
+            project_id,
+            url,
+        )
+
 
 ingestion_service = IngestionService()

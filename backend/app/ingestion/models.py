@@ -81,6 +81,12 @@ class ZipSource:
 
 
 @dataclass(frozen=True)
+class GitSource:
+    source_type: SourceType = SourceType.GIT
+    url: str = ""
+
+
+@dataclass(frozen=True)
 class ImportedFilesystemTree:
     """
     Result of importers that materialize content as a directory tree (ZIP, Git).

@@ -8,12 +8,16 @@ from app.core.deps import DbSession
 from app.llm.exceptions import LLMCompletionError, LLMUnavailableError
 from app.retrieval import search_similar_chunks
 from app.retrieval.exceptions import QueryEmbeddingError, SemanticSearchUnavailableError
+from app.ingestion.base import IngestionError
+from app.ingestion.importers.git_importer import validate_git_remote_url
 from app.schemas import (
     ChunkSearchHit,
     FileRead,
     ProjectAskRequest,
     ProjectAskResponse,
     ProjectCreate,
+    ProjectImportRequest,
+    ProjectImportSourceType,
     ProjectRead,
     ProjectSearchRequest,
     ProjectSearchResponse,
@@ -72,6 +76,49 @@ async def upload_repository(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Failed to extract repository archive.",
+        )
+
+    return ProjectUploadResponse.model_validate(result)
+
+
+@router.post("/{project_id}/import", response_model=ProjectUploadResponse)
+async def import_project(
+    project_id: uuid.UUID,
+    payload: ProjectImportRequest,
+    session: DbSession,
+) -> ProjectUploadResponse:
+    if payload.source_type != ProjectImportSourceType.git:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Unsupported import source type.",
+        )
+
+    try:
+        validate_git_remote_url(payload.url)
+    except IngestionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    try:
+        await project_service.get_project(session, project_id)
+    except ProjectNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+
+    result = await ingestion_service.ingest_git_url(
+        session,
+        project_id,
+        payload.url.strip(),
+    )
+
+    if result["ingestion_status"] == "failed":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Failed to import Git repository.",
         )
 
     return ProjectUploadResponse.model_validate(result)
