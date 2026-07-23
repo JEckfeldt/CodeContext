@@ -62,7 +62,7 @@ export function CodeContextApp() {
               </p>
               <p className="section-title mt-1">Connect a project</p>
               <p className="mt-1 max-w-xl text-sm text-muted">
-                Upload a ZIP archive or import from a public Git repository URL.
+                Upload a ZIP archive, import from a public Git repository URL, or add individual files.
               </p>
             </div>
           </div>
@@ -72,7 +72,7 @@ export function CodeContextApp() {
           {!repositoryReady ? (
             <div className="status-banner mt-5">
               <p className="text-sm text-muted">
-                No project loaded. Upload a ZIP or import a Git URL to index content for
+                Upload a ZIP, import a Git URL, or upload individual files to index content for
                 search and explanations.
               </p>
             </div>

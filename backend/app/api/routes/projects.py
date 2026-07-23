@@ -1,5 +1,6 @@
 import uuid
 from pathlib import Path
+from typing import Annotated
 
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
 
@@ -9,7 +10,9 @@ from app.llm.exceptions import LLMCompletionError, LLMUnavailableError
 from app.retrieval import search_similar_chunks
 from app.retrieval.exceptions import QueryEmbeddingError, SemanticSearchUnavailableError
 from app.ingestion.base import IngestionError
+from app.ingestion.importers.file_importer import validate_upload_filename
 from app.ingestion.importers.git_importer import validate_git_remote_url
+from app.ingestion.models import UploadedFilePayload
 from app.schemas import (
     ChunkSearchHit,
     FileRead,
@@ -119,6 +122,60 @@ async def import_project(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Failed to import Git repository.",
+        )
+
+    return ProjectUploadResponse.model_validate(result)
+
+
+@router.post("/{project_id}/files/import", response_model=ProjectUploadResponse)
+async def import_project_files(
+    project_id: uuid.UUID,
+    session: DbSession,
+    files: Annotated[list[UploadFile], File()],
+) -> ProjectUploadResponse:
+    if not files:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="At least one file is required.",
+        )
+
+    try:
+        await project_service.get_project(session, project_id)
+    except ProjectNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+
+    payloads: list[UploadedFilePayload] = []
+    for upload in files:
+        if not upload.filename:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Each upload must include a filename.",
+            )
+        try:
+            validate_upload_filename(upload.filename)
+        except IngestionError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(exc),
+            ) from exc
+        data = await upload.read()
+        payloads.append(
+            UploadedFilePayload(filename=upload.filename, data=data),
+        )
+
+    result = await ingestion_service.ingest_uploaded_files(
+        session,
+        project_id,
+        payloads,
+    )
+
+    if result["ingestion_status"] == "failed":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Failed to import uploaded files.",
         )
 
     return ProjectUploadResponse.model_validate(result)

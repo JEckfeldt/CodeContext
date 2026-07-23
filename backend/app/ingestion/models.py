@@ -87,6 +87,18 @@ class GitSource:
 
 
 @dataclass(frozen=True)
+class UploadedFilePayload:
+    filename: str
+    data: bytes
+
+
+@dataclass(frozen=True)
+class FileImportSource:
+    source_type: SourceType = SourceType.FILE
+    files: tuple[UploadedFilePayload, ...] = ()
+
+
+@dataclass(frozen=True)
 class ImportedFilesystemTree:
     """
     Result of importers that materialize content as a directory tree (ZIP, Git).

@@ -75,6 +75,22 @@ export async function importGitRepository(
   return parseJson<UploadResult>(response);
 }
 
+export async function importProjectFiles(
+  projectId: string,
+  files: File[],
+): Promise<UploadResult> {
+  const formData = new FormData();
+  for (const file of files) {
+    formData.append("files", file);
+  }
+
+  const response = await fetch(`${getApiBaseUrl()}/projects/${projectId}/files/import`, {
+    method: "POST",
+    body: formData,
+  });
+  return parseJson<UploadResult>(response);
+}
+
 export async function listProjectFiles(projectId: string): Promise<FileRecord[]> {
   const response = await fetch(`${getApiBaseUrl()}/projects/${projectId}/files`);
   return parseJson<FileRecord[]>(response);
@@ -121,4 +137,11 @@ export function projectNameFromGitUrl(url: string): string {
   } catch {
     return "repository";
   }
+}
+
+export function projectNameFromUploadedFiles(files: File[]): string {
+  if (files.length === 0) return "uploaded-files";
+  const first = files[0].name.replace(/\.[^.]+$/, "") || "uploaded-files";
+  if (files.length === 1) return first;
+  return `${first}-and-${files.length - 1}-more`;
 }

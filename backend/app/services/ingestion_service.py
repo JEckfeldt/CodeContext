@@ -3,6 +3,7 @@ from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ingestion.models import UploadedFilePayload
 from app.ingestion.service import ingestion_pipeline
 
 
@@ -29,6 +30,18 @@ class IngestionService:
             session,
             project_id,
             url,
+        )
+
+    async def ingest_uploaded_files(
+        self,
+        session: AsyncSession,
+        project_id: uuid.UUID,
+        files: list[UploadedFilePayload],
+    ) -> dict[str, object]:
+        return await ingestion_pipeline.ingest_uploaded_files(
+            session,
+            project_id,
+            files,
         )
 
 

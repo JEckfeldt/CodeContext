@@ -68,3 +68,46 @@ async def replace_project_files(
     )
     await session.commit()
     return len(discovered_files)
+
+
+async def upsert_project_files(
+    session: AsyncSession,
+    project_id: uuid.UUID,
+    discovered_files: list[DiscoveredFile],
+) -> int:
+    await get_project(session, project_id)
+
+    for discovered in discovered_files:
+        existing = await session.scalar(
+            select(File).where(
+                File.project_id == project_id,
+                File.path == discovered.path,
+            )
+        )
+        if existing is None:
+            session.add(
+                File(
+                    project_id=project_id,
+                    path=discovered.path,
+                    filename=discovered.filename,
+                    extension=discovered.extension,
+                    language=discovered.language,
+                    size=discovered.size,
+                    content=discovered.content,
+                )
+            )
+            continue
+
+        existing.filename = discovered.filename
+        existing.extension = discovered.extension
+        existing.language = discovered.language
+        existing.size = discovered.size
+        existing.content = discovered.content
+
+    await session.execute(
+        update(Project)
+        .where(Project.id == project_id)
+        .values(updated_at=datetime.now(timezone.utc))
+    )
+    await session.commit()
+    return len(discovered_files)

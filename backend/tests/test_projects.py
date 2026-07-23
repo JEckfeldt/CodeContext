@@ -134,3 +134,73 @@ async def test_import_git_persists_discovered_files(
     paths = {item["path"] for item in files_response.json()}
     assert "src/app.py" in paths
     assert "README.md" in paths
+
+
+@pytest.mark.asyncio
+async def test_import_files_rejects_unsupported_extension(client: AsyncClient) -> None:
+    create_response = await client.post("/api/v1/projects", json={"name": "Bad Files"})
+    project_id = create_response.json()["id"]
+
+    response = await client.post(
+        f"/api/v1/projects/{project_id}/files/import",
+        files={"files": ("notes.zip", b"binary", "application/zip")},
+    )
+    assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_import_files_persists_markdown_and_text(client: AsyncClient) -> None:
+    create_response = await client.post("/api/v1/projects", json={"name": "File Import"})
+    project_id = create_response.json()["id"]
+
+    response = await client.post(
+        f"/api/v1/projects/{project_id}/files/import",
+        files=[
+            ("files", ("guide.md", b"# Guide\n\nHello\n", "text/markdown")),
+            ("files", ("notes.txt", b"Plain notes\n", "text/plain")),
+        ],
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["files_discovered"] == 2
+    assert payload["ingestion_status"] == "completed"
+    assert payload["chunks_created"] >= 2
+
+    files_response = await client.get(f"/api/v1/projects/{project_id}/files")
+    paths = {item["path"] for item in files_response.json()}
+    assert paths == {"guide.md", "notes.txt"}
+
+
+@pytest.mark.asyncio
+async def test_import_files_rejects_unsupported_extension(client: AsyncClient) -> None:
+    create_response = await client.post("/api/v1/projects", json={"name": "Bad Files"})
+    project_id = create_response.json()["id"]
+
+    response = await client.post(
+        f"/api/v1/projects/{project_id}/files/import",
+        files={"files": ("notes.zip", b"binary", "application/zip")},
+    )
+    assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_import_files_persists_markdown_and_text(client: AsyncClient) -> None:
+    create_response = await client.post("/api/v1/projects", json={"name": "File Import"})
+    project_id = create_response.json()["id"]
+
+    response = await client.post(
+        f"/api/v1/projects/{project_id}/files/import",
+        files=[
+            ("files", ("guide.md", b"# Guide\n\nHello\n", "text/markdown")),
+            ("files", ("notes.txt", b"Plain notes\n", "text/plain")),
+        ],
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["files_discovered"] == 2
+    assert payload["ingestion_status"] == "completed"
+    assert payload["chunks_created"] >= 2
+
+    files_response = await client.get(f"/api/v1/projects/{project_id}/files")
+    paths = {item["path"] for item in files_response.json()}
+    assert paths == {"guide.md", "notes.txt"}

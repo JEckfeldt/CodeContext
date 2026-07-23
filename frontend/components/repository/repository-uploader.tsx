@@ -6,8 +6,10 @@ import { Button } from "@/components/ui/button";
 import {
   createProject,
   importGitRepository,
+  importProjectFiles,
   listProjectFiles,
   projectNameFromGitUrl,
+  projectNameFromUploadedFiles,
   projectNameFromZipFilename,
   uploadRepository,
 } from "@/lib/api";
@@ -20,7 +22,9 @@ export type IngestedRepository = {
   files: FileRecord[];
 };
 
-type ConnectSource = "zip" | "git";
+type ConnectSource = "zip" | "git" | "files";
+
+const INDIVIDUAL_FILE_ACCEPT = ".md,.markdown,.txt,.pdf,text/markdown,text/plain,application/pdf";
 
 type RepositoryUploaderProps = {
   onSuccess: (result: IngestedRepository) => void;
@@ -28,28 +32,30 @@ type RepositoryUploaderProps = {
 };
 
 export function RepositoryUploader({ onSuccess, disabled }: RepositoryUploaderProps) {
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const zipInputRef = useRef<HTMLInputElement>(null);
+  const filesInputRef = useRef<HTMLInputElement>(null);
   const [source, setSource] = useState<ConnectSource>("zip");
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedZip, setSelectedZip] = useState<File | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [gitUrl, setGitUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleZipUpload() {
-    if (!selectedFile || loading) return;
+    if (!selectedZip || loading) return;
 
     setError(null);
     setLoading(true);
 
     try {
-      const name = projectNameFromZipFilename(selectedFile.name);
+      const name = projectNameFromZipFilename(selectedZip.name);
       const project = await createProject(name);
-      const upload = await uploadRepository(project.id, selectedFile);
+      const upload = await uploadRepository(project.id, selectedZip);
       const files = await listProjectFiles(project.id);
 
       onSuccess({ project, upload, files });
-      setSelectedFile(null);
-      if (fileInputRef.current) fileInputRef.current.value = "";
+      setSelectedZip(null);
+      if (zipInputRef.current) zipInputRef.current.value = "";
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed.");
     } finally {
@@ -79,56 +85,76 @@ export function RepositoryUploader({ onSuccess, disabled }: RepositoryUploaderPr
     }
   }
 
+  async function handleFilesImport() {
+    if (selectedFiles.length === 0 || loading) return;
+
+    setError(null);
+    setLoading(true);
+
+    try {
+      const name = projectNameFromUploadedFiles(selectedFiles);
+      const project = await createProject(name);
+      const upload = await importProjectFiles(project.id, selectedFiles);
+      const files = await listProjectFiles(project.id);
+
+      onSuccess({ project, upload, files });
+      setSelectedFiles([]);
+      if (filesInputRef.current) filesInputRef.current.value = "";
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Import failed.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const loadingMessage =
+    source === "zip"
+      ? "Creating project, uploading archive, and discovering source files…"
+      : source === "git"
+        ? "Creating project, cloning repository, and discovering source files…"
+        : "Creating project, importing files, and indexing content…";
+
   return (
     <div className="space-y-4">
       <div
-        className="flex w-full max-w-md rounded-lg border border-border bg-secondary-muted/70 p-1"
+        className="flex w-full max-w-xl rounded-lg border border-border bg-secondary-muted/70 p-1"
         role="tablist"
         aria-label="Connect source"
       >
-        <button
-          type="button"
-          role="tab"
-          aria-selected={source === "zip"}
-          className={cn(
-            "flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors sm:px-4",
-            source === "zip"
-              ? "bg-surface text-primary shadow-sm"
-              : "text-muted hover:text-foreground",
-          )}
-          disabled={loading || disabled}
-          onClick={() => {
-            setSource("zip");
-            setError(null);
-          }}
-        >
-          Upload ZIP
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={source === "git"}
-          className={cn(
-            "flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors sm:px-4",
-            source === "git"
-              ? "bg-surface text-primary shadow-sm"
-              : "text-muted hover:text-foreground",
-          )}
-          disabled={loading || disabled}
-          onClick={() => {
-            setSource("git");
-            setError(null);
-          }}
-        >
-          Repository URL
-        </button>
+        {(
+          [
+            ["zip", "Upload ZIP"],
+            ["git", "Repository URL"],
+            ["files", "Individual Files"],
+          ] as const
+        ).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            role="tab"
+            aria-selected={source === value}
+            className={cn(
+              "flex-1 rounded-md px-2 py-2 text-sm font-medium transition-colors sm:px-3",
+              source === value
+                ? "bg-surface text-primary shadow-sm"
+                : "text-muted hover:text-foreground",
+            )}
+            disabled={loading || disabled}
+            onClick={() => {
+              setSource(value);
+              setError(null);
+            }}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       {source === "zip" ? (
         <div
           className={cn(
             "rounded-lg border border-dashed border-border bg-secondary-muted/80 px-4 py-5 sm:px-6",
-            selectedFile && "border-primary/35 bg-primary-muted/30",
+            selectedZip && "border-primary/35 bg-primary-muted/30",
           )}
         >
           <p className="text-sm font-medium text-foreground">Upload ZIP archive</p>
@@ -142,19 +168,19 @@ export function RepositoryUploader({ onSuccess, disabled }: RepositoryUploaderPr
               variant="outline"
               className="h-10 w-full sm:w-auto"
               disabled={disabled || loading}
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => zipInputRef.current?.click()}
             >
-              {selectedFile ? "Change file" : "Choose ZIP file"}
+              {selectedZip ? "Change file" : "Choose ZIP file"}
             </Button>
             <input
-              ref={fileInputRef}
+              ref={zipInputRef}
               type="file"
               accept=".zip,application/zip"
               className="hidden"
               disabled={disabled || loading}
               onChange={(event) => {
                 const file = event.target.files?.[0] ?? null;
-                setSelectedFile(file);
+                setSelectedZip(file);
                 setError(null);
               }}
             />
@@ -162,21 +188,23 @@ export function RepositoryUploader({ onSuccess, disabled }: RepositoryUploaderPr
               type="button"
               variant="primary"
               className="h-10 w-full sm:w-auto"
-              disabled={disabled || loading || !selectedFile}
+              disabled={disabled || loading || !selectedZip}
               onClick={() => void handleZipUpload()}
             >
               {loading ? "Indexing…" : "Upload and ingest"}
             </Button>
           </div>
 
-          {selectedFile && !loading ? (
+          {selectedZip && !loading ? (
             <p className="mt-3 break-all font-mono text-xs text-muted sm:text-sm">
               Selected:{" "}
-              <span className="text-foreground">{selectedFile.name}</span>
+              <span className="text-foreground">{selectedZip.name}</span>
             </p>
           ) : null}
         </div>
-      ) : (
+      ) : null}
+
+      {source === "git" ? (
         <div className="rounded-lg border border-dashed border-border bg-secondary-muted/80 px-4 py-5 sm:px-6">
           <label htmlFor="git-repository-url" className="text-sm font-medium text-foreground">
             Repository URL
@@ -216,15 +244,67 @@ export function RepositoryUploader({ onSuccess, disabled }: RepositoryUploaderPr
             </Button>
           </div>
         </div>
-      )}
-
-      {loading ? (
-        <p className="text-sm text-muted">
-          {source === "zip"
-            ? "Creating project, uploading archive, and discovering source files…"
-            : "Creating project, cloning repository, and discovering source files…"}
-        </p>
       ) : null}
+
+      {source === "files" ? (
+        <div
+          className={cn(
+            "rounded-lg border border-dashed border-border bg-secondary-muted/80 px-4 py-5 sm:px-6",
+            selectedFiles.length > 0 && "border-primary/35 bg-primary-muted/30",
+          )}
+        >
+          <p className="text-sm font-medium text-foreground">Individual files</p>
+          <p className="mt-1 text-sm text-muted">
+            Upload Markdown, plain text, or text-based PDF files to index for search.
+          </p>
+
+          <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-10 w-full sm:w-auto"
+              disabled={disabled || loading}
+              onClick={() => filesInputRef.current?.click()}
+            >
+              {selectedFiles.length > 0 ? "Change files" : "Choose files"}
+            </Button>
+            <input
+              ref={filesInputRef}
+              type="file"
+              multiple
+              accept={INDIVIDUAL_FILE_ACCEPT}
+              className="hidden"
+              disabled={disabled || loading}
+              onChange={(event) => {
+                const list = event.target.files ? Array.from(event.target.files) : [];
+                setSelectedFiles(list);
+                setError(null);
+              }}
+            />
+            <Button
+              type="button"
+              variant="primary"
+              className="h-10 w-full sm:w-auto"
+              disabled={disabled || loading || selectedFiles.length === 0}
+              onClick={() => void handleFilesImport()}
+            >
+              {loading ? "Importing…" : "Upload files"}
+            </Button>
+          </div>
+
+          {selectedFiles.length > 0 && !loading ? (
+            <ul className="mt-3 space-y-1 font-mono text-xs text-muted sm:text-sm">
+              {selectedFiles.map((file) => (
+                <li key={`${file.name}-${file.size}`} className="break-all text-foreground">
+                  {file.name}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      ) : null}
+
+      {loading ? <p className="text-sm text-muted">{loadingMessage}</p> : null}
 
       {error ? (
         <p className="status-banner-error text-sm" role="alert">
