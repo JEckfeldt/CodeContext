@@ -5,7 +5,7 @@ import pytest
 from httpx import AsyncClient
 
 from app.llm.exceptions import LLMCompletionError, LLMUnavailableError
-from app.retrieval.exceptions import QueryEmbeddingError, SemanticSearchUnavailableError
+from app.retrieval.exceptions import QueryEmbeddingError
 from app.services.assistant_service import AssistantResult, SourceCitation
 
 
@@ -13,8 +13,13 @@ from app.services.assistant_service import AssistantResult, SourceCitation
 async def test_ask_project_returns_answer(
     client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
+    auth_headers: dict[str, str],
 ) -> None:
-    create_response = await client.post("/api/v1/projects", json={"name": "Ask Test"})
+    create_response = await client.post(
+        "/api/v1/projects",
+        json={"name": "Ask Test"},
+        headers=auth_headers,
+    )
     project_id = create_response.json()["id"]
 
     fake_result = AssistantResult(
@@ -40,6 +45,7 @@ async def test_ask_project_returns_answer(
     response = await client.post(
         f"/api/v1/projects/{project_id}/ask",
         json={"question": "How does auth work?", "top_k": 5},
+        headers=auth_headers,
     )
 
     assert response.status_code == 200
@@ -59,35 +65,49 @@ async def test_ask_project_returns_answer(
 
 
 @pytest.mark.asyncio
-async def test_ask_project_not_found(client: AsyncClient) -> None:
+async def test_ask_project_not_found(
+    client: AsyncClient,
+    auth_headers: dict[str, str],
+) -> None:
     missing_id = uuid.uuid4()
     response = await client.post(
         f"/api/v1/projects/{missing_id}/ask",
         json={"question": "What is this project?"},
+        headers=auth_headers,
     )
     assert response.status_code == 404
 
 
 @pytest.mark.asyncio
-async def test_ask_project_rejects_invalid_body(client: AsyncClient) -> None:
-    create_response = await client.post("/api/v1/projects", json={"name": "Invalid Ask"})
+async def test_ask_project_rejects_invalid_body(
+    client: AsyncClient,
+    auth_headers: dict[str, str],
+) -> None:
+    create_response = await client.post(
+        "/api/v1/projects",
+        json={"name": "Invalid Ask"},
+        headers=auth_headers,
+    )
     project_id = create_response.json()["id"]
 
     empty_question = await client.post(
         f"/api/v1/projects/{project_id}/ask",
         json={"question": ""},
+        headers=auth_headers,
     )
     assert empty_question.status_code == 422
 
     invalid_top_k = await client.post(
         f"/api/v1/projects/{project_id}/ask",
         json={"question": "valid?", "top_k": 0},
+        headers=auth_headers,
     )
     assert invalid_top_k.status_code == 422
 
     missing_question = await client.post(
         f"/api/v1/projects/{project_id}/ask",
         json={},
+        headers=auth_headers,
     )
     assert missing_question.status_code == 422
 
@@ -96,8 +116,13 @@ async def test_ask_project_rejects_invalid_body(client: AsyncClient) -> None:
 async def test_ask_project_llm_unavailable(
     client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
+    auth_headers: dict[str, str],
 ) -> None:
-    create_response = await client.post("/api/v1/projects", json={"name": "LLM Off"})
+    create_response = await client.post(
+        "/api/v1/projects",
+        json={"name": "LLM Off"},
+        headers=auth_headers,
+    )
     project_id = create_response.json()["id"]
 
     ask_mock = AsyncMock(
@@ -110,6 +135,7 @@ async def test_ask_project_llm_unavailable(
     response = await client.post(
         f"/api/v1/projects/{project_id}/ask",
         json={"question": "Explain the app"},
+        headers=auth_headers,
     )
     assert response.status_code == 503
     assert "LLM_ENABLED" in response.json()["detail"]
@@ -120,8 +146,13 @@ async def test_ask_project_llm_unavailable(
 async def test_ask_project_retrieval_failure(
     client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
+    auth_headers: dict[str, str],
 ) -> None:
-    create_response = await client.post("/api/v1/projects", json={"name": "Retrieval Fail"})
+    create_response = await client.post(
+        "/api/v1/projects",
+        json={"name": "Retrieval Fail"},
+        headers=auth_headers,
+    )
     project_id = create_response.json()["id"]
 
     ask_mock = AsyncMock(side_effect=QueryEmbeddingError("Embedding provider is not configured."))
@@ -130,19 +161,28 @@ async def test_ask_project_retrieval_failure(
     response = await client.post(
         f"/api/v1/projects/{project_id}/ask",
         json={"question": "Where is auth?"},
+        headers=auth_headers,
     )
     assert response.status_code == 503
     ask_mock.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_ask_project_semantic_search_unavailable(client: AsyncClient) -> None:
-    create_response = await client.post("/api/v1/projects", json={"name": "SQLite Ask"})
+async def test_ask_project_semantic_search_unavailable(
+    client: AsyncClient,
+    auth_headers: dict[str, str],
+) -> None:
+    create_response = await client.post(
+        "/api/v1/projects",
+        json={"name": "SQLite Ask"},
+        headers=auth_headers,
+    )
     project_id = create_response.json()["id"]
 
     response = await client.post(
         f"/api/v1/projects/{project_id}/ask",
         json={"question": "Where is auth?"},
+        headers=auth_headers,
     )
     assert response.status_code == 503
     assert "PostgreSQL" in response.json()["detail"]
@@ -152,8 +192,13 @@ async def test_ask_project_semantic_search_unavailable(client: AsyncClient) -> N
 async def test_ask_project_provider_failure(
     client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
+    auth_headers: dict[str, str],
 ) -> None:
-    create_response = await client.post("/api/v1/projects", json={"name": "LLM Fail"})
+    create_response = await client.post(
+        "/api/v1/projects",
+        json={"name": "LLM Fail"},
+        headers=auth_headers,
+    )
     project_id = create_response.json()["id"]
 
     ask_mock = AsyncMock(side_effect=LLMCompletionError("OpenAI chat completion failed"))
@@ -162,6 +207,7 @@ async def test_ask_project_provider_failure(
     response = await client.post(
         f"/api/v1/projects/{project_id}/ask",
         json={"question": "Summarize the repo"},
+        headers=auth_headers,
     )
     assert response.status_code == 503
     assert "OpenAI chat completion failed" in response.json()["detail"]

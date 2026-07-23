@@ -51,33 +51,56 @@ class IngestionPipeline:
         session: AsyncSession,
         project_id: uuid.UUID,
         upload_path: Path,
+        *,
+        user_id: uuid.UUID,
     ) -> dict[str, object]:
         """ZIP upload entry point used by the existing REST API."""
-        return await self.run_zip_ingestion(session, project_id, upload_path)
+        return await self.run_zip_ingestion(
+            session,
+            project_id,
+            upload_path,
+            user_id=user_id,
+        )
 
     async def ingest_git_url(
         self,
         session: AsyncSession,
         project_id: uuid.UUID,
         url: str,
+        *,
+        user_id: uuid.UUID,
     ) -> dict[str, object]:
         """Git URL entry point used by ``POST /projects/{id}/import``."""
-        return await self.run_git_ingestion(session, project_id, url)
+        return await self.run_git_ingestion(
+            session,
+            project_id,
+            url,
+            user_id=user_id,
+        )
 
     async def ingest_uploaded_files(
         self,
         session: AsyncSession,
         project_id: uuid.UUID,
         files: list[UploadedFilePayload],
+        *,
+        user_id: uuid.UUID,
     ) -> dict[str, object]:
         """Individual files entry point used by ``POST /projects/{id}/files/import``."""
-        return await self.run_file_ingestion(session, project_id, files)
+        return await self.run_file_ingestion(
+            session,
+            project_id,
+            files,
+            user_id=user_id,
+        )
 
     async def run_zip_ingestion(
         self,
         session: AsyncSession,
         project_id: uuid.UUID,
         archive_path: Path,
+        *,
+        user_id: uuid.UUID,
     ) -> dict[str, object]:
         source = ZipSource(source_type=SourceType.ZIP, archive_path=archive_path)
         workspace_dir: Path | None = None
@@ -94,6 +117,7 @@ class IngestionPipeline:
                 project_id,
                 documents,
                 replace_existing=True,
+                user_id=user_id,
             )
         except IngestionError:
             await session.rollback()
@@ -109,6 +133,8 @@ class IngestionPipeline:
         session: AsyncSession,
         project_id: uuid.UUID,
         url: str,
+        *,
+        user_id: uuid.UUID,
     ) -> dict[str, object]:
         source = GitSource(source_type=SourceType.GIT, url=url)
         workspace_dir: Path | None = None
@@ -125,6 +151,7 @@ class IngestionPipeline:
                 project_id,
                 documents,
                 replace_existing=True,
+                user_id=user_id,
             )
         except IngestionError:
             await session.rollback()
@@ -138,6 +165,8 @@ class IngestionPipeline:
         session: AsyncSession,
         project_id: uuid.UUID,
         files: list[UploadedFilePayload],
+        *,
+        user_id: uuid.UUID,
     ) -> dict[str, object]:
         source = FileImportSource(
             source_type=SourceType.FILE,
@@ -151,6 +180,7 @@ class IngestionPipeline:
                 project_id,
                 documents,
                 replace_existing=False,
+                user_id=user_id,
             )
         except IngestionError:
             await session.rollback()
@@ -163,20 +193,23 @@ class IngestionPipeline:
         documents: list[ExtractedDocument],
         *,
         replace_existing: bool,
+        user_id: uuid.UUID,
     ) -> dict[str, object]:
-        await project_service.get_project(session, project_id)
+        await project_service.get_project_for_user(session, project_id, user_id)
         discovered = discovered_files_from_documents(documents)
         if replace_existing:
             files_discovered = await project_service.replace_project_files(
                 session,
                 project_id,
                 discovered,
+                user_id=user_id,
             )
         else:
             files_discovered = await project_service.upsert_project_files(
                 session,
                 project_id,
                 discovered,
+                user_id=user_id,
             )
         chunks_created = await indexing_service.index_project_files(
             session,

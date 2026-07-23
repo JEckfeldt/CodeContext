@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     llm_model: str = "gpt-4o-mini"
     llm_max_tokens: int = 2048
     llm_timeout_seconds: float = 120.0
+    jwt_secret_key: str = "change-me-in-production"
+    jwt_algorithm: str = "HS256"
+    jwt_access_token_expire_minutes: int = 60 * 24 * 7
 
     @field_validator("cors_origins", mode="before")
     @classmethod

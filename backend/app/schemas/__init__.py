@@ -3,6 +3,12 @@ from app.schemas.assistant import (
     ProjectAskResponse,
     SourceCitation,
 )
+from app.schemas.auth import (
+    AuthResponse,
+    UserLoginRequest,
+    UserRead,
+    UserRegisterRequest,
+)
 from app.schemas.project import (
     FileRead,
     ProjectCreate,
@@ -14,6 +20,7 @@ from app.schemas.project import (
 from app.schemas.search import ChunkSearchHit, ProjectSearchRequest, ProjectSearchResponse
 
 __all__ = [
+    "AuthResponse",
     "ChunkSearchHit",
     "FileRead",
     "ProjectAskRequest",
@@ -26,4 +33,7 @@ __all__ = [
     "ProjectSearchResponse",
     "ProjectUploadResponse",
     "SourceCitation",
+    "UserLoginRequest",
+    "UserRead",
+    "UserRegisterRequest",
 ]

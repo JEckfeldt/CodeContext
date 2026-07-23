@@ -5,6 +5,8 @@ os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
 os.environ["EMBEDDING_ENABLED"] = "false"
 os.environ["LLM_ENABLED"] = "false"
 
+os.environ["JWT_SECRET_KEY"] = "test-secret-key-for-pytest-min-32-bytes!"
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -12,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.database.base import Base
 from app.database.session import get_db
 from app.main import app
-from app.models import CodeChunk, File, Project  # noqa: F401
+from app.models import CodeChunk, File, Project, ProjectSource, User  # noqa: F401
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
@@ -48,6 +50,17 @@ async def client(session_factory) -> AsyncClient:
         yield async_client
 
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+async def auth_headers(client: AsyncClient) -> dict[str, str]:
+    response = await client.post(
+        "/api/v1/auth/register",
+        json={"email": "user@example.com", "password": "password123"},
+    )
+    assert response.status_code == 201
+    token = response.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
 
 
 @pytest.fixture

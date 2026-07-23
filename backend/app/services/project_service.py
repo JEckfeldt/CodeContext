@@ -13,12 +13,29 @@ class ProjectNotFoundError(Exception):
     pass
 
 
-async def create_project(session: AsyncSession, payload: ProjectCreate) -> Project:
-    project = Project(name=payload.name.strip())
+async def create_project(
+    session: AsyncSession,
+    payload: ProjectCreate,
+    *,
+    user_id: uuid.UUID,
+) -> Project:
+    project = Project(name=payload.name.strip(), user_id=user_id)
     session.add(project)
     await session.commit()
     await session.refresh(project)
     return project
+
+
+async def list_projects_for_user(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+) -> list[Project]:
+    result = await session.scalars(
+        select(Project)
+        .where(Project.user_id == user_id)
+        .order_by(Project.updated_at.desc())
+    )
+    return list(result.all())
 
 
 async def get_project(session: AsyncSession, project_id: uuid.UUID) -> Project:
@@ -28,10 +45,24 @@ async def get_project(session: AsyncSession, project_id: uuid.UUID) -> Project:
     return project
 
 
+async def get_project_for_user(
+    session: AsyncSession,
+    project_id: uuid.UUID,
+    user_id: uuid.UUID,
+) -> Project:
+    project = await session.get(Project, project_id)
+    if project is None or project.user_id != user_id:
+        raise ProjectNotFoundError(f"Project {project_id} was not found.")
+    return project
+
+
 async def list_project_files(
-    session: AsyncSession, project_id: uuid.UUID
+    session: AsyncSession,
+    project_id: uuid.UUID,
+    *,
+    user_id: uuid.UUID,
 ) -> list[File]:
-    await get_project(session, project_id)
+    await get_project_for_user(session, project_id, user_id)
     result = await session.scalars(
         select(File)
         .where(File.project_id == project_id)
@@ -44,8 +75,10 @@ async def replace_project_files(
     session: AsyncSession,
     project_id: uuid.UUID,
     discovered_files: list[DiscoveredFile],
+    *,
+    user_id: uuid.UUID,
 ) -> int:
-    await get_project(session, project_id)
+    await get_project_for_user(session, project_id, user_id)
     await session.execute(delete(File).where(File.project_id == project_id))
 
     for discovered in discovered_files:
@@ -74,8 +107,10 @@ async def upsert_project_files(
     session: AsyncSession,
     project_id: uuid.UUID,
     discovered_files: list[DiscoveredFile],
+    *,
+    user_id: uuid.UUID,
 ) -> int:
-    await get_project(session, project_id)
+    await get_project_for_user(session, project_id, user_id)
 
     for discovered in discovered_files:
         existing = await session.scalar(

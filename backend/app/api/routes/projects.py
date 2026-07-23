@@ -4,6 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
 
+from app.core.auth_deps import CurrentUser
 from app.core.config import settings
 from app.core.deps import DbSession
 from app.llm.exceptions import LLMCompletionError, LLMUnavailableError
@@ -30,16 +31,55 @@ from app.services import project_service
 from app.services.assistant_service import ask_question
 from app.services.ingestion_service import ingestion_service
 from app.services.project_service import ProjectNotFoundError
+from app.services import project_source_service
 
 router = APIRouter(prefix="/projects", tags=["projects"])
+
+
+def _project_not_found(exc: ProjectNotFoundError) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=str(exc),
+    )
+
+
+@router.get("", response_model=list[ProjectRead])
+async def list_projects(
+    session: DbSession,
+    current_user: CurrentUser,
+) -> list[ProjectRead]:
+    projects = await project_service.list_projects_for_user(session, current_user.id)
+    return [ProjectRead.model_validate(project) for project in projects]
+
+
+@router.get("/{project_id}", response_model=ProjectRead)
+async def get_project(
+    project_id: uuid.UUID,
+    session: DbSession,
+    current_user: CurrentUser,
+) -> ProjectRead:
+    try:
+        project = await project_service.get_project_for_user(
+            session,
+            project_id,
+            current_user.id,
+        )
+    except ProjectNotFoundError as exc:
+        raise _project_not_found(exc) from exc
+    return ProjectRead.model_validate(project)
 
 
 @router.post("", response_model=ProjectRead, status_code=status.HTTP_201_CREATED)
 async def create_project(
     payload: ProjectCreate,
     session: DbSession,
+    current_user: CurrentUser,
 ) -> ProjectRead:
-    project = await project_service.create_project(session, payload)
+    project = await project_service.create_project(
+        session,
+        payload,
+        user_id=current_user.id,
+    )
     return ProjectRead.model_validate(project)
 
 
@@ -47,6 +87,7 @@ async def create_project(
 async def upload_repository(
     project_id: uuid.UUID,
     session: DbSession,
+    current_user: CurrentUser,
     archive: UploadFile = File(...),
 ) -> ProjectUploadResponse:
     if not archive.filename or not archive.filename.lower().endswith(".zip"):
@@ -56,12 +97,13 @@ async def upload_repository(
         )
 
     try:
-        await project_service.get_project(session, project_id)
+        await project_service.get_project_for_user(
+            session,
+            project_id,
+            current_user.id,
+        )
     except ProjectNotFoundError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(exc),
-        ) from exc
+        raise _project_not_found(exc) from exc
 
     upload_dir = Path(settings.data_dir) / "uploads" / "incoming"
     upload_dir.mkdir(parents=True, exist_ok=True)
@@ -73,6 +115,7 @@ async def upload_repository(
         session,
         project_id,
         upload_path,
+        user_id=current_user.id,
     )
 
     if result["ingestion_status"] == "failed":
@@ -80,6 +123,13 @@ async def upload_repository(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Failed to extract repository archive.",
         )
+
+    await project_source_service.record_project_source(
+        session,
+        project_id,
+        source_type="zip",
+        source_name=archive.filename,
+    )
 
     return ProjectUploadResponse.model_validate(result)
 
@@ -89,6 +139,7 @@ async def import_project(
     project_id: uuid.UUID,
     payload: ProjectImportRequest,
     session: DbSession,
+    current_user: CurrentUser,
 ) -> ProjectUploadResponse:
     if payload.source_type != ProjectImportSourceType.git:
         raise HTTPException(
@@ -105,17 +156,20 @@ async def import_project(
         ) from exc
 
     try:
-        await project_service.get_project(session, project_id)
+        await project_service.get_project_for_user(
+            session,
+            project_id,
+            current_user.id,
+        )
     except ProjectNotFoundError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(exc),
-        ) from exc
+        raise _project_not_found(exc) from exc
 
+    url = payload.url.strip()
     result = await ingestion_service.ingest_git_url(
         session,
         project_id,
-        payload.url.strip(),
+        url,
+        user_id=current_user.id,
     )
 
     if result["ingestion_status"] == "failed":
@@ -124,6 +178,14 @@ async def import_project(
             detail="Failed to import Git repository.",
         )
 
+    await project_source_service.record_project_source(
+        session,
+        project_id,
+        source_type="git",
+        source_name=url,
+        source_url=url,
+    )
+
     return ProjectUploadResponse.model_validate(result)
 
 
@@ -131,6 +193,7 @@ async def import_project(
 async def import_project_files(
     project_id: uuid.UUID,
     session: DbSession,
+    current_user: CurrentUser,
     files: Annotated[list[UploadFile], File()],
 ) -> ProjectUploadResponse:
     if not files:
@@ -140,12 +203,13 @@ async def import_project_files(
         )
 
     try:
-        await project_service.get_project(session, project_id)
+        await project_service.get_project_for_user(
+            session,
+            project_id,
+            current_user.id,
+        )
     except ProjectNotFoundError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(exc),
-        ) from exc
+        raise _project_not_found(exc) from exc
 
     payloads: list[UploadedFilePayload] = []
     for upload in files:
@@ -170,6 +234,7 @@ async def import_project_files(
         session,
         project_id,
         payloads,
+        user_id=current_user.id,
     )
 
     if result["ingestion_status"] == "failed":
@@ -178,6 +243,18 @@ async def import_project_files(
             detail="Failed to import uploaded files.",
         )
 
+    if len(payloads) == 1:
+        source_name = payloads[0].filename
+    else:
+        source_name = f"{len(payloads)} files"
+
+    await project_source_service.record_project_source(
+        session,
+        project_id,
+        source_type="file",
+        source_name=source_name,
+    )
+
     return ProjectUploadResponse.model_validate(result)
 
 
@@ -185,14 +262,16 @@ async def import_project_files(
 async def list_project_files(
     project_id: uuid.UUID,
     session: DbSession,
+    current_user: CurrentUser,
 ) -> list[FileRead]:
     try:
-        files = await project_service.list_project_files(session, project_id)
+        files = await project_service.list_project_files(
+            session,
+            project_id,
+            user_id=current_user.id,
+        )
     except ProjectNotFoundError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(exc),
-        ) from exc
+        raise _project_not_found(exc) from exc
 
     return [FileRead.model_validate(file) for file in files]
 
@@ -202,15 +281,18 @@ async def search_project(
     project_id: uuid.UUID,
     payload: ProjectSearchRequest,
     session: DbSession,
+    current_user: CurrentUser,
 ) -> ProjectSearchResponse:
     """Run semantic search over embedded chunks in a project."""
     try:
+        await project_service.get_project_for_user(
+            session,
+            project_id,
+            current_user.id,
+        )
         results = await search_similar_chunks(session, project_id, payload.query)
     except ProjectNotFoundError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(exc),
-        ) from exc
+        raise _project_not_found(exc) from exc
     except (SemanticSearchUnavailableError, QueryEmbeddingError) as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -229,9 +311,15 @@ async def ask_project(
     project_id: uuid.UUID,
     payload: ProjectAskRequest,
     session: DbSession,
+    current_user: CurrentUser,
 ) -> ProjectAskResponse:
     """Answer a question about a project using retrieval-augmented generation."""
     try:
+        await project_service.get_project_for_user(
+            session,
+            project_id,
+            current_user.id,
+        )
         result = await ask_question(
             session,
             project_id,
@@ -239,10 +327,7 @@ async def ask_project(
             limit=payload.top_k,
         )
     except ProjectNotFoundError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(exc),
-        ) from exc
+        raise _project_not_found(exc) from exc
     except (
         SemanticSearchUnavailableError,
         QueryEmbeddingError,

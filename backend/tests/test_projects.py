@@ -18,8 +18,12 @@ def _build_repo_zip() -> bytes:
 
 
 @pytest.mark.asyncio
-async def test_create_project(client: AsyncClient) -> None:
-    response = await client.post("/api/v1/projects", json={"name": "Demo Project"})
+async def test_create_project(client: AsyncClient, auth_headers: dict[str, str]) -> None:
+    response = await client.post(
+        "/api/v1/projects",
+        json={"name": "Demo Project"},
+        headers=auth_headers,
+    )
     assert response.status_code == 201
     payload = response.json()
     assert payload["name"] == "Demo Project"
@@ -27,13 +31,27 @@ async def test_create_project(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_upload_repository_persists_discovered_files(client: AsyncClient) -> None:
-    create_response = await client.post("/api/v1/projects", json={"name": "Upload Test"})
+async def test_create_project_requires_auth(client: AsyncClient) -> None:
+    response = await client.post("/api/v1/projects", json={"name": "Demo Project"})
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_upload_repository_persists_discovered_files(
+    client: AsyncClient,
+    auth_headers: dict[str, str],
+) -> None:
+    create_response = await client.post(
+        "/api/v1/projects",
+        json={"name": "Upload Test"},
+        headers=auth_headers,
+    )
     project_id = create_response.json()["id"]
 
     upload_response = await client.post(
         f"/api/v1/projects/{project_id}/upload",
         files={"archive": ("repo.zip", _build_repo_zip(), "application/zip")},
+        headers=auth_headers,
     )
     assert upload_response.status_code == 200
     upload_payload = upload_response.json()
@@ -41,7 +59,10 @@ async def test_upload_repository_persists_discovered_files(client: AsyncClient) 
     assert upload_payload["files_discovered"] == 2
     assert upload_payload["ingestion_status"] == "completed"
 
-    files_response = await client.get(f"/api/v1/projects/{project_id}/files")
+    files_response = await client.get(
+        f"/api/v1/projects/{project_id}/files",
+        headers=auth_headers,
+    )
     assert files_response.status_code == 200
     files = files_response.json()
     paths = {item["path"] for item in files}
@@ -54,13 +75,19 @@ async def test_upload_repository_persists_discovered_files(client: AsyncClient) 
 async def test_upload_repository_creates_code_chunks(
     client: AsyncClient,
     db_session,
+    auth_headers: dict[str, str],
 ) -> None:
-    create_response = await client.post("/api/v1/projects", json={"name": "Chunk Test"})
+    create_response = await client.post(
+        "/api/v1/projects",
+        json={"name": "Chunk Test"},
+        headers=auth_headers,
+    )
     project_id = create_response.json()["id"]
 
     upload_response = await client.post(
         f"/api/v1/projects/{project_id}/upload",
         files={"archive": ("repo.zip", _build_repo_zip(), "application/zip")},
+        headers=auth_headers,
     )
     assert upload_response.status_code == 200
     upload_payload = upload_response.json()
@@ -72,25 +99,41 @@ async def test_upload_repository_creates_code_chunks(
 
 
 @pytest.mark.asyncio
-async def test_upload_rejects_invalid_archive(client: AsyncClient) -> None:
-    create_response = await client.post("/api/v1/projects", json={"name": "Bad Upload"})
+async def test_upload_rejects_invalid_archive(
+    client: AsyncClient,
+    auth_headers: dict[str, str],
+) -> None:
+    create_response = await client.post(
+        "/api/v1/projects",
+        json={"name": "Bad Upload"},
+        headers=auth_headers,
+    )
     project_id = create_response.json()["id"]
 
     upload_response = await client.post(
         f"/api/v1/projects/{project_id}/upload",
         files={"archive": ("repo.zip", b"not-a-zip", "application/zip")},
+        headers=auth_headers,
     )
     assert upload_response.status_code == 400
 
 
 @pytest.mark.asyncio
-async def test_import_git_rejects_invalid_url(client: AsyncClient) -> None:
-    create_response = await client.post("/api/v1/projects", json={"name": "Git Invalid"})
+async def test_import_git_rejects_invalid_url(
+    client: AsyncClient,
+    auth_headers: dict[str, str],
+) -> None:
+    create_response = await client.post(
+        "/api/v1/projects",
+        json={"name": "Git Invalid"},
+        headers=auth_headers,
+    )
     project_id = create_response.json()["id"]
 
     response = await client.post(
         f"/api/v1/projects/{project_id}/import",
         json={"source_type": "git", "url": "not-a-valid-url"},
+        headers=auth_headers,
     )
     assert response.status_code == 400
 
@@ -99,6 +142,7 @@ async def test_import_git_rejects_invalid_url(client: AsyncClient) -> None:
 async def test_import_git_persists_discovered_files(
     client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
+    auth_headers: dict[str, str],
 ) -> None:
     from pathlib import Path
 
@@ -113,7 +157,11 @@ async def test_import_git_persists_discovered_files(
         mock_clone,
     )
 
-    create_response = await client.post("/api/v1/projects", json={"name": "Git Import"})
+    create_response = await client.post(
+        "/api/v1/projects",
+        json={"name": "Git Import"},
+        headers=auth_headers,
+    )
     project_id = create_response.json()["id"]
 
     import_response = await client.post(
@@ -122,6 +170,7 @@ async def test_import_git_persists_discovered_files(
             "source_type": "git",
             "url": "https://github.com/user/repository",
         },
+        headers=auth_headers,
     )
     assert import_response.status_code == 200
     payload = import_response.json()
@@ -130,27 +179,45 @@ async def test_import_git_persists_discovered_files(
     assert payload["ingestion_status"] == "completed"
     assert payload["chunks_created"] >= 2
 
-    files_response = await client.get(f"/api/v1/projects/{project_id}/files")
+    files_response = await client.get(
+        f"/api/v1/projects/{project_id}/files",
+        headers=auth_headers,
+    )
     paths = {item["path"] for item in files_response.json()}
     assert "src/app.py" in paths
     assert "README.md" in paths
 
 
 @pytest.mark.asyncio
-async def test_import_files_rejects_unsupported_extension(client: AsyncClient) -> None:
-    create_response = await client.post("/api/v1/projects", json={"name": "Bad Files"})
+async def test_import_files_rejects_unsupported_extension(
+    client: AsyncClient,
+    auth_headers: dict[str, str],
+) -> None:
+    create_response = await client.post(
+        "/api/v1/projects",
+        json={"name": "Bad Files"},
+        headers=auth_headers,
+    )
     project_id = create_response.json()["id"]
 
     response = await client.post(
         f"/api/v1/projects/{project_id}/files/import",
         files={"files": ("notes.zip", b"binary", "application/zip")},
+        headers=auth_headers,
     )
     assert response.status_code == 400
 
 
 @pytest.mark.asyncio
-async def test_import_files_persists_markdown_and_text(client: AsyncClient) -> None:
-    create_response = await client.post("/api/v1/projects", json={"name": "File Import"})
+async def test_import_files_persists_markdown_and_text(
+    client: AsyncClient,
+    auth_headers: dict[str, str],
+) -> None:
+    create_response = await client.post(
+        "/api/v1/projects",
+        json={"name": "File Import"},
+        headers=auth_headers,
+    )
     project_id = create_response.json()["id"]
 
     response = await client.post(
@@ -159,6 +226,7 @@ async def test_import_files_persists_markdown_and_text(client: AsyncClient) -> N
             ("files", ("guide.md", b"# Guide\n\nHello\n", "text/markdown")),
             ("files", ("notes.txt", b"Plain notes\n", "text/plain")),
         ],
+        headers=auth_headers,
     )
     assert response.status_code == 200
     payload = response.json()
@@ -166,41 +234,9 @@ async def test_import_files_persists_markdown_and_text(client: AsyncClient) -> N
     assert payload["ingestion_status"] == "completed"
     assert payload["chunks_created"] >= 2
 
-    files_response = await client.get(f"/api/v1/projects/{project_id}/files")
-    paths = {item["path"] for item in files_response.json()}
-    assert paths == {"guide.md", "notes.txt"}
-
-
-@pytest.mark.asyncio
-async def test_import_files_rejects_unsupported_extension(client: AsyncClient) -> None:
-    create_response = await client.post("/api/v1/projects", json={"name": "Bad Files"})
-    project_id = create_response.json()["id"]
-
-    response = await client.post(
-        f"/api/v1/projects/{project_id}/files/import",
-        files={"files": ("notes.zip", b"binary", "application/zip")},
+    files_response = await client.get(
+        f"/api/v1/projects/{project_id}/files",
+        headers=auth_headers,
     )
-    assert response.status_code == 400
-
-
-@pytest.mark.asyncio
-async def test_import_files_persists_markdown_and_text(client: AsyncClient) -> None:
-    create_response = await client.post("/api/v1/projects", json={"name": "File Import"})
-    project_id = create_response.json()["id"]
-
-    response = await client.post(
-        f"/api/v1/projects/{project_id}/files/import",
-        files=[
-            ("files", ("guide.md", b"# Guide\n\nHello\n", "text/markdown")),
-            ("files", ("notes.txt", b"Plain notes\n", "text/plain")),
-        ],
-    )
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["files_discovered"] == 2
-    assert payload["ingestion_status"] == "completed"
-    assert payload["chunks_created"] >= 2
-
-    files_response = await client.get(f"/api/v1/projects/{project_id}/files")
     paths = {item["path"] for item in files_response.json()}
     assert paths == {"guide.md", "notes.txt"}

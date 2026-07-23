@@ -4,34 +4,34 @@ import { useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
-  createProject,
   importGitRepository,
   importProjectFiles,
   listProjectFiles,
-  projectNameFromGitUrl,
-  projectNameFromUploadedFiles,
-  projectNameFromZipFilename,
   uploadRepository,
 } from "@/lib/api";
 import { cn } from "@/lib/cn";
-import type { FileRecord, Project, UploadResult } from "@/types";
+import type { FileRecord, UploadResult } from "@/types";
 
-export type IngestedRepository = {
-  project: Project;
+export type IngestSuccess = {
   upload: UploadResult;
   files: FileRecord[];
 };
 
-type ConnectSource = "zip" | "git" | "files";
-
 const INDIVIDUAL_FILE_ACCEPT = ".md,.markdown,.txt,.pdf,text/markdown,text/plain,application/pdf";
 
+type ConnectSource = "zip" | "git" | "files";
+
 type RepositoryUploaderProps = {
-  onSuccess: (result: IngestedRepository) => void;
+  projectId: string;
+  onSuccess: (result: IngestSuccess) => void;
   disabled?: boolean;
 };
 
-export function RepositoryUploader({ onSuccess, disabled }: RepositoryUploaderProps) {
+export function RepositoryUploader({
+  projectId,
+  onSuccess,
+  disabled,
+}: RepositoryUploaderProps) {
   const zipInputRef = useRef<HTMLInputElement>(null);
   const filesInputRef = useRef<HTMLInputElement>(null);
   const [source, setSource] = useState<ConnectSource>("zip");
@@ -41,19 +41,22 @@ export function RepositoryUploader({ onSuccess, disabled }: RepositoryUploaderPr
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const blocked = disabled || loading || !projectId;
+
+  async function refreshAfterIngest(upload: UploadResult) {
+    const files = await listProjectFiles(projectId);
+    onSuccess({ upload, files });
+  }
+
   async function handleZipUpload() {
-    if (!selectedZip || loading) return;
+    if (!selectedZip || loading || !projectId) return;
 
     setError(null);
     setLoading(true);
 
     try {
-      const name = projectNameFromZipFilename(selectedZip.name);
-      const project = await createProject(name);
-      const upload = await uploadRepository(project.id, selectedZip);
-      const files = await listProjectFiles(project.id);
-
-      onSuccess({ project, upload, files });
+      const upload = await uploadRepository(projectId, selectedZip);
+      await refreshAfterIngest(upload);
       setSelectedZip(null);
       if (zipInputRef.current) zipInputRef.current.value = "";
     } catch (err) {
@@ -65,18 +68,14 @@ export function RepositoryUploader({ onSuccess, disabled }: RepositoryUploaderPr
 
   async function handleGitImport() {
     const url = gitUrl.trim();
-    if (!url || loading) return;
+    if (!url || loading || !projectId) return;
 
     setError(null);
     setLoading(true);
 
     try {
-      const name = projectNameFromGitUrl(url);
-      const project = await createProject(name);
-      const upload = await importGitRepository(project.id, url);
-      const files = await listProjectFiles(project.id);
-
-      onSuccess({ project, upload, files });
+      const upload = await importGitRepository(projectId, url);
+      await refreshAfterIngest(upload);
       setGitUrl("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Import failed.");
@@ -86,18 +85,14 @@ export function RepositoryUploader({ onSuccess, disabled }: RepositoryUploaderPr
   }
 
   async function handleFilesImport() {
-    if (selectedFiles.length === 0 || loading) return;
+    if (selectedFiles.length === 0 || loading || !projectId) return;
 
     setError(null);
     setLoading(true);
 
     try {
-      const name = projectNameFromUploadedFiles(selectedFiles);
-      const project = await createProject(name);
-      const upload = await importProjectFiles(project.id, selectedFiles);
-      const files = await listProjectFiles(project.id);
-
-      onSuccess({ project, upload, files });
+      const upload = await importProjectFiles(projectId, selectedFiles);
+      await refreshAfterIngest(upload);
       setSelectedFiles([]);
       if (filesInputRef.current) filesInputRef.current.value = "";
     } catch (err) {
@@ -109,10 +104,10 @@ export function RepositoryUploader({ onSuccess, disabled }: RepositoryUploaderPr
 
   const loadingMessage =
     source === "zip"
-      ? "Creating project, uploading archive, and discovering source files…"
+      ? "Uploading archive and indexing content…"
       : source === "git"
-        ? "Creating project, cloning repository, and discovering source files…"
-        : "Creating project, importing files, and indexing content…";
+        ? "Cloning repository and indexing content…"
+        : "Importing files and indexing content…";
 
   return (
     <div className="space-y-4">
@@ -139,7 +134,7 @@ export function RepositoryUploader({ onSuccess, disabled }: RepositoryUploaderPr
                 ? "bg-surface text-primary shadow-sm"
                 : "text-muted hover:text-foreground",
             )}
-            disabled={loading || disabled}
+            disabled={blocked}
             onClick={() => {
               setSource(value);
               setError(null);
@@ -159,7 +154,7 @@ export function RepositoryUploader({ onSuccess, disabled }: RepositoryUploaderPr
         >
           <p className="text-sm font-medium text-foreground">Upload ZIP archive</p>
           <p className="mt-1 text-sm text-muted">
-            Select a project archive to ingest and index for search.
+            Add a ZIP archive to this project workspace.
           </p>
 
           <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
@@ -167,7 +162,7 @@ export function RepositoryUploader({ onSuccess, disabled }: RepositoryUploaderPr
               type="button"
               variant="outline"
               className="h-10 w-full sm:w-auto"
-              disabled={disabled || loading}
+              disabled={blocked}
               onClick={() => zipInputRef.current?.click()}
             >
               {selectedZip ? "Change file" : "Choose ZIP file"}
@@ -177,10 +172,9 @@ export function RepositoryUploader({ onSuccess, disabled }: RepositoryUploaderPr
               type="file"
               accept=".zip,application/zip"
               className="hidden"
-              disabled={disabled || loading}
+              disabled={blocked}
               onChange={(event) => {
-                const file = event.target.files?.[0] ?? null;
-                setSelectedZip(file);
+                setSelectedZip(event.target.files?.[0] ?? null);
                 setError(null);
               }}
             />
@@ -188,7 +182,7 @@ export function RepositoryUploader({ onSuccess, disabled }: RepositoryUploaderPr
               type="button"
               variant="primary"
               className="h-10 w-full sm:w-auto"
-              disabled={disabled || loading || !selectedZip}
+              disabled={blocked || !selectedZip}
               onClick={() => void handleZipUpload()}
             >
               {loading ? "Indexing…" : "Upload and ingest"}
@@ -197,8 +191,7 @@ export function RepositoryUploader({ onSuccess, disabled }: RepositoryUploaderPr
 
           {selectedZip && !loading ? (
             <p className="mt-3 break-all font-mono text-xs text-muted sm:text-sm">
-              Selected:{" "}
-              <span className="text-foreground">{selectedZip.name}</span>
+              Selected: <span className="text-foreground">{selectedZip.name}</span>
             </p>
           ) : null}
         </div>
@@ -209,15 +202,13 @@ export function RepositoryUploader({ onSuccess, disabled }: RepositoryUploaderPr
           <label htmlFor="git-repository-url" className="text-sm font-medium text-foreground">
             Repository URL
           </label>
-          <p className="mt-1 text-sm text-muted">
-            Import a public Git repository to ingest and index for search.
-          </p>
+          <p className="mt-1 text-sm text-muted">Import a public Git repository into this project.</p>
 
           <input
             id="git-repository-url"
             type="url"
             value={gitUrl}
-            disabled={disabled || loading}
+            disabled={blocked}
             placeholder="https://github.com/user/repository"
             className="mt-4 w-full rounded-md border border-border bg-surface px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
             onChange={(event) => {
@@ -237,7 +228,7 @@ export function RepositoryUploader({ onSuccess, disabled }: RepositoryUploaderPr
               type="button"
               variant="primary"
               className="h-10 w-full sm:w-auto"
-              disabled={disabled || loading || !gitUrl.trim()}
+              disabled={blocked || !gitUrl.trim()}
               onClick={() => void handleGitImport()}
             >
               {loading ? "Importing…" : "Import Repository"}
@@ -255,7 +246,7 @@ export function RepositoryUploader({ onSuccess, disabled }: RepositoryUploaderPr
         >
           <p className="text-sm font-medium text-foreground">Individual files</p>
           <p className="mt-1 text-sm text-muted">
-            Upload Markdown, plain text, or text-based PDF files to index for search.
+            Upload Markdown, plain text, or text-based PDF files.
           </p>
 
           <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
@@ -263,7 +254,7 @@ export function RepositoryUploader({ onSuccess, disabled }: RepositoryUploaderPr
               type="button"
               variant="outline"
               className="h-10 w-full sm:w-auto"
-              disabled={disabled || loading}
+              disabled={blocked}
               onClick={() => filesInputRef.current?.click()}
             >
               {selectedFiles.length > 0 ? "Change files" : "Choose files"}
@@ -274,10 +265,9 @@ export function RepositoryUploader({ onSuccess, disabled }: RepositoryUploaderPr
               multiple
               accept={INDIVIDUAL_FILE_ACCEPT}
               className="hidden"
-              disabled={disabled || loading}
+              disabled={blocked}
               onChange={(event) => {
-                const list = event.target.files ? Array.from(event.target.files) : [];
-                setSelectedFiles(list);
+                setSelectedFiles(event.target.files ? Array.from(event.target.files) : []);
                 setError(null);
               }}
             />
@@ -285,7 +275,7 @@ export function RepositoryUploader({ onSuccess, disabled }: RepositoryUploaderPr
               type="button"
               variant="primary"
               className="h-10 w-full sm:w-auto"
-              disabled={disabled || loading || selectedFiles.length === 0}
+              disabled={blocked || selectedFiles.length === 0}
               onClick={() => void handleFilesImport()}
             >
               {loading ? "Importing…" : "Upload files"}

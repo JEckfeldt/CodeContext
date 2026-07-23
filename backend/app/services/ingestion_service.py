@@ -13,11 +13,14 @@ class IngestionService:
         session: AsyncSession,
         project_id: uuid.UUID,
         upload_path: Path,
+        *,
+        user_id: uuid.UUID,
     ) -> dict[str, object]:
         return await ingestion_pipeline.ingest_zip_upload(
             session,
             project_id,
             upload_path,
+            user_id=user_id,
         )
 
     async def ingest_git_url(
@@ -25,11 +28,14 @@ class IngestionService:
         session: AsyncSession,
         project_id: uuid.UUID,
         url: str,
+        *,
+        user_id: uuid.UUID,
     ) -> dict[str, object]:
         return await ingestion_pipeline.ingest_git_url(
             session,
             project_id,
             url,
+            user_id=user_id,
         )
 
     async def ingest_uploaded_files(
@@ -37,11 +43,14 @@ class IngestionService:
         session: AsyncSession,
         project_id: uuid.UUID,
         files: list[UploadedFilePayload],
+        *,
+        user_id: uuid.UUID,
     ) -> dict[str, object]:
         return await ingestion_pipeline.ingest_uploaded_files(
             session,
             project_id,
             files,
+            user_id=user_id,
         )
 
 

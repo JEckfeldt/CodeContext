@@ -11,7 +11,12 @@ from app.services import project_service
 
 async def index_project_files(session: AsyncSession, project_id: uuid.UUID) -> int:
     await project_service.get_project(session, project_id)
-    files = await project_service.list_project_files(session, project_id)
+    result = await session.scalars(
+        select(File)
+        .where(File.project_id == project_id)
+        .order_by(File.path.asc())
+    )
+    files = list(result.all())
 
     await session.execute(delete(CodeChunk).where(CodeChunk.project_id == project_id))
 
