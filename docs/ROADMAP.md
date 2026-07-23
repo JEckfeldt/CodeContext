@@ -12,13 +12,13 @@ This document defines **direction and scope**. For what is done and in flight to
 
 **Features:**
 
-- Repository upload (ZIP; Git clone later)
+- Repository upload (**ZIP**; **public Git URL import**)
 - Project management
 - Recursive file discovery
 - Supported file filtering and ignores
 - Persist file metadata and source content
 
-**Outcome:** User can upload a repository and browse its discovered source files.
+**Outcome:** User can upload a repository or import a public Git URL and browse discovered source files.
 
 ---
 
@@ -61,7 +61,7 @@ This document defines **direction and scope**. For what is done and in flight to
 - LLM integration
 - Retrieval-augmented generation (RAG)
 - Source citations
-- Conversation history
+- Conversation history *(not yet implemented)*
 
 **Outcome:** User can ask questions and get grounded answers linked to real project files.
 
