@@ -1,298 +1,292 @@
-# CodeContext Project Status
-
-Handoff document for continuing development. **Scope and phased goals** are defined in the [Roadmap](ROADMAP.md). This file describes **what is shipped**, **what works today**, **what is missing**, and **recommended next steps**.
-
----
-
-## Development summary
-
-| | |
-|--|--|
-| **Current phase** | Post–Phase 4 MVP (Phases 1–4 complete; Phase 5 not started) |
-| **Completed phases** | 1 Repository Ingestion · 2 Code Indexing · 3 Semantic Search · 4 AI Code Assistant |
-| **Recommended next milestone** | Production foundations: **authentication**, **re-index workflow**, and **deployment** |
-| **Approximate MVP maturity** | **Strong local/demo MVP** — ingest (ZIP or Git URL) → search → explain with Docker, Postgres, and OpenAI; not production-hardened (no auth, no hosted deploy story, no streaming/history) |
-
----
-
-## Summary
-
-Phases **1–4** are **complete**. CodeContext is a single-page app where users **connect a project** (ZIP or public Git URL), **browse files**, and use one **project workspace** with two modes:
-
-- **Search** — natural-language search over indexed snippets (semantic / vector search)
-- **Explain** — RAG assistant that answers from retrieved context with **source citations**
-
-Ingestion is **source-agnostic**: ZIP and Git URL both flow through `app/ingestion/` (Importer → `ExtractedDocument` → shared chunking, embeddings, search, and explain).
-
-The frontend uses a **unified, responsive workspace** (light theme, tabbed modes, full-width results). Backend tests: **66 passed, 1 skipped** (default). Frontend: **`npm run build`** verified. ZIP and Git import paths verified in Docker after **git** was added to the backend image.
-
-**Phase 5** (advanced developer tools) and several **cross-cutting** features (auth, streaming, etc.) are **not** implemented.
-
----
-
-## Phase overview
-
-| Phase | Roadmap goal | Status |
-|-------|----------------|--------|
-| 1 — Repository Ingestion | Upload and browse discovered source files | **Complete** (ZIP + Git URL import) |
-| 2 — Code Indexing | Prepare repositories for semantic search | **Complete** |
-| 3 — Semantic Search | Find relevant code with natural language | **Complete** |
-| 4 — AI Code Assistant | Grounded answers with file citations | **Complete** |
-| 5 — Advanced Developer Tools | Scale and deeper repo insights | **Not started** |
-
----
-
-## Current state
-
-| Layer | Stack |
-|--------|--------|
-| Frontend | Next.js — ZIP / Git connect, file list, **Search** / **Explain** workspace |
-| Backend | FastAPI, SQLAlchemy async, Alembic, **ingestion pipeline**, retrieval, LLM + RAG |
-| Database | PostgreSQL 16 + **pgvector** + **HNSW** (cosine) |
-
-**Backend ingestion flow:**
-
-```text
-Source (ZIP or Git URL)
-        ↓
-Importer (ZipImporter / GitImporter)
-        ↓
-CodeExtractor → ExtractedDocument[]
-        ↓
-Persist files → chunk → optional embed
-        ↓
-Search / Explain (vector search + RAG)
-```
-
-**Legacy mental model** (still accurate for outcomes): discovered content → `files` → `code_chunks` → optional embeddings → vector search → (Explain) RAG → answer + citations.
-
----
-
-## UI workflow (today)
-
-```text
-Connect project (Upload ZIP  |  Repository URL)
-        ↓
-Browse discovered files + active project summary
-        ↓
-Project workspace (one panel, tabbed)
-   ┌─────────┬──────────┐
-   │ Search  │ Explain  │  ← only one mode visible at a time
-   └─────────┴──────────┘
-        ↓
-   Query input + primary action (Search / Explain)
-        ↓
-   Results (scrollable, full width)
-```
-
-### Search (UI label)
-
-**Purpose:** Help users **locate** relevant files, documents, and code in the indexed project.
-
-**Backend:** `POST /api/v1/projects/{id}/search` → vector similarity over embedded chunks.
-
-**Results:** Ranked hits with path, line range, symbol (if any), snippet, similarity score.
-
-### Explain (UI label)
-
-**Purpose:** Help users **understand** the project via AI explanations tied to indexed content.
-
-**Backend:** `POST /api/v1/projects/{id}/ask` → retrieve chunks → RAG prompt → LLM → Markdown answer + **SourceCitation** list (aligned with prompt context).
-
-**Results:** Markdown answer and expandable source cards (path, lines, symbol, snippet).
-
-Component filenames (`RepositorySearchSection`, `RepositoryAskSection`, etc.) are unchanged; user-facing copy uses Search / Explain.
-
----
-
-## Current MVP capabilities
-
-Everything below works **today** when run via Docker (or equivalent) with PostgreSQL + pgvector, **git** in the backend container, and OpenAI configured as documented.
-
-**Ingestion & browsing**
-
-- Create project and **ZIP upload** (`POST .../upload`)
-- **Git repository URL import** — validate URL, shallow `git clone`, same discovery rules as ZIP (`POST .../import`)
-- **Source-agnostic pipeline** — `backend/app/ingestion/` (`SourceType`, `ExtractedDocument`, importers, `CodeExtractor`, shared `_ingest_imported_tree`)
-- File discovery with extension / ignore rules and `.gitignore` respect
-- Persist file metadata and content
-- **Browse** discovered files in the UI
-- Frontend: tabbed **Upload ZIP** / **Repository URL** on the connect panel
-
-**Indexing & search (backend)**
-
-- **Code chunking** (Python / Markdown parsers; line-based fallback) from `ExtractedDocument`
-- Optional **embeddings** on ingest (`EMBEDDING_ENABLED`, OpenAI; **disabled by default**)
-- **pgvector** storage and **HNSW** cosine index
-- **Semantic search** API and Search UI
-
-**AI assistant (backend + UI)**
-
-- LLM provider abstraction + OpenAI chat completions (`LLM_ENABLED`)
-- RAG **prompts**, **assistant_service** orchestration
-- **Explain** UI: Markdown answers, **source citations**, user-friendly errors
-- Citation list matches chunks sent to the model (`select_rag_context_chunks`)
-
-**Frontend / UX**
-
-- **Responsive** layout (mobile / tablet / desktop)
-- **Unified workspace** with tabbed Search / Explain (state preserved when switching tabs)
-- Light, developer-tool-style UI (panels, composers, code blocks)
-
-**Quality & tooling**
-
-- Backend unit/API tests (including Git importer and import API with mocked clone); optional Postgres integration test (skipped by default)
-- **Test settings isolation** — pytest skips repo `.env` and forces feature flags off so local `.env` does not break deterministic tests
-- Frontend production build passes
-- Backend Docker image includes **git** for in-container cloning
-
----
-
-## HTTP API (reference)
-
-| Method | Path | Purpose |
-|--------|------|---------|
-| POST | `/api/v1/projects` | Create project |
-| POST | `/api/v1/projects/{id}/upload` | Upload ZIP |
-| POST | `/api/v1/projects/{id}/import` | Import Git URL (`{ "source_type": "git", "url": "…" }`) |
-| GET | `/api/v1/projects/{id}/files` | List files |
-| POST | `/api/v1/projects/{id}/search` | Search (semantic) |
-| POST | `/api/v1/projects/{id}/ask` | Explain (RAG) |
-| GET | `/api/v1/health` | Health check |
-
-**Import request (Git):** `{ "source_type": "git", "url": "https://github.com/user/repository" }`.
-
-**Import / upload response:** `{ "project_id", "files_discovered", "chunks_created", "embeddings_created", "ingestion_status" }`.
-
-**Ask request:** `{ "question": "…", "top_k": 8 }` (`top_k` optional, 1–20).
-
-**Ask response:** `{ "project_id", "question", "answer", "citations": [{ "index", "file_path", "start_line", "end_line", "symbol_name", "snippet", "similarity" }] }`.
-
-Search/ask require **PostgreSQL + pgvector**, **`EMBEDDING_ENABLED`**, and for ask also **`LLM_ENABLED`** + **`OPENAI_API_KEY`**. See [README.md](../README.md) and `.env.example`.
-
----
-
-## Completed work (by phase)
-
-### Phase 1 — Repository Ingestion
-
-- ZIP upload, project create, discovery, filters, persist files
-- **Ingestion refactor** — `app/ingestion/` (`SourceType`, `ExtractedDocument`, `BaseImporter` / `BaseExtractor`, `IngestionPipeline`)
-- **Git URL ingestion** — `GitImporter`, URL validation, shallow clone, `POST .../import`; frontend **Repository URL** tab
-- **Docker** — `git` installed in backend image for clone inside containers
-
-### Phase 2 — Code Indexing
-
-Chunks via `ExtractedDocument` / `build_document_chunks`, parsers, optional embeddings, pgvector + migration `0004` HNSW.
-
-### Phase 3 — Semantic Search
-
-`search_similar_chunks`, search API, Search UI (`frontend/components/search/`).
-
-### Phase 4 — AI Code Assistant
-
-`app/llm/`, `app/prompts/`, `assistant_service`, ask API/schemas, Explain UI (`frontend/components/assistant/`), citation alignment hardening.
-
-| Area | Path |
-|------|------|
-| Ingestion | `backend/app/ingestion/` |
-| Retrieval | `backend/app/retrieval/` |
-| LLM | `backend/app/llm/` |
-| Prompts | `backend/app/prompts/` |
-| Orchestration | `backend/app/services/assistant_service.py`, `backend/app/ingestion/service.py` |
-| Routes | `backend/app/api/routes/projects.py` |
-| Shell / workspace | `frontend/components/code-context-app.tsx` |
-| Connect UI | `frontend/components/repository/repository-uploader.tsx` |
-| API client | `frontend/lib/api.ts` |
-
----
-
-## Current limitations
-
-Features that **do not exist** today (do not assume they work):
-
-**Product & access**
-
-- **Authentication** / login
-- **Multi-user** or multi-tenant projects
-- **Deployment** guide or production hosting setup in-repo (Docker Compose is for local/dev)
-
-**Ingestion & indexing**
-
-- **Private Git** remotes (SSH keys, tokens, GitHub App) — public HTTP(S) URLs only
-- **Non-Git sources** in the UI (PDF, single-file upload, etc.) — pipeline-ready but not exposed
-- **Re-index** or refresh index **without** re-importing or re-uploading
-- **Background indexing** workers (ingest is synchronous from the user’s perspective)
-- UI **embedding coverage** indicators (empty search vs missing vectors)
-
-**Assistant UX**
-
-- **Streaming** AI responses
-- **Conversation history** / multi-turn threads (roadmap Phase 4 stretch; not built)
-
-**Advanced search & platform**
-
-- Hybrid retrieval, **re-ranking**, repository **maps**, **dependency graphs**
-- **Usage analytics** / billing
-- Public chunk listing API
-
----
-
-## Recommended next priorities
-
-### High priority
-
-- **Authentication** — secure projects and API before any shared deployment
-- **Re-index workflow** — re-chunk / re-embed without full re-upload or re-clone; surface status in UI
-- **Deployment** — documented path to staging/production (env, migrations, secrets)
-
-### Medium priority
-
-- **Private Git** — credentials, shallow clone for private GitHub/GitLab repos
-- **Streaming** Explain responses
-- **Conversation history** for follow-up questions
-- **Retrieval improvements** — thresholds, optional re-rank before RAG
-- **Embedding / indexing status** in UI after ingest
-
-### Future (Phase 5+)
-
-- Additional source types (PDF, Markdown files, plain text) via new importers
-- Repository maps and navigation
-- Dependency / relationship insights
-- Background workers for large repos
-- Hybrid retrieval and re-ranking at scale
-- Multi-repository or org-wide chat (depends on auth)
-
----
-
-## Development notes
-
-### Run locally
-
-```bash
-docker compose up --build
-```
-
-- Frontend: http://localhost:3000  
-- Backend: http://localhost:8000 (`/api/v1/health`)  
-- Backend entrypoint: `alembic upgrade head` then uvicorn  
-- Rebuild backend after Dockerfile changes so **git** is available for Git import
-
-### Migrations
-
-`0001` projects/files → `0002` chunks → `0003` symbol + embedding → `0004` HNSW.
-
-Legacy DBs from `init_db()` only: `alembic stamp 0002_create_code_chunks` then `alembic upgrade head`.
-
-### Tests
-
-```bash
-cd backend && python -m pytest -q    # 66 passed, 1 skipped (default)
-cd frontend && npm run build
-```
-
-Postgres integration: `CODECONTEXT_INTEGRATION_DATABASE_URL=... pytest -m integration`
-
----
-
-*When Phase 5 or major platform work ships, update **Phase overview**, **Completed work**, **Current MVP capabilities**, and **Recommended next priorities**.*
+# CodeContext Project Status
+
+Handoff document for continuing development. **Scope and phased goals** are defined in the [Roadmap](ROADMAP.md). This file describes **what is shipped**, **what works today**, **what is missing**, and **recommended next steps**.
+
+---
+
+## Development summary
+
+| | |
+|--|--|
+| **Current phase** | Post–Phase 4 MVP with **auth & multi-user projects** (Phases 1–4 complete; Phase 5 not started) |
+| **Completed phases** | 1 Repository Ingestion · 2 Code Indexing · 3 Semantic Search · 4 AI Code Assistant · **Platform auth & project ownership** |
+| **Recommended next milestone** | **Deployment**, **re-index workflow**, and **private Git** credentials |
+| **Approximate MVP maturity** | **Multi-user local/demo MVP** — register/login, owned projects, multiple source types per project, search/explain with Docker, Postgres, pgvector, and OpenAI; not production-hardened (no hosted deploy guide, streaming, or conversation history) |
+
+---
+
+## Summary
+
+CodeContext is a **multi-user AI workspace** for project content. Users **register and log in**, **create projects they own**, **import sources** (Git URL, ZIP, or individual files), then **Search** and **Explain** over all indexed content in that project.
+
+Phases **1–4** remain **complete**. Ingestion is **source-agnostic** via `app/ingestion/` (Importer → `ExtractedDocument` → shared chunking, optional embeddings, search, RAG). Successful imports are recorded as **`project_sources`** rows (Git, ZIP, or file batch).
+
+The frontend provides **`/register`**, **`/login`**, JWT session storage, **project create/select**, source import tabs, and a tabbed **Search / Explain** workspace. Backend tests: **82 passed, 1 skipped** (default). Frontend: **`npm run build`** verified.
+
+**Phase 5** (advanced developer tools) and several UX/platform items (streaming, re-index UI, etc.) are **not** implemented.
+
+---
+
+## Phase overview
+
+| Phase | Roadmap goal | Status |
+|-------|----------------|--------|
+| 1 — Repository Ingestion | Ingest and browse project content | **Complete** (ZIP, Git URL, individual files; owned projects) |
+| 2 — Code Indexing | Prepare content for semantic search | **Complete** |
+| 3 — Semantic Search | Find relevant content with natural language | **Complete** |
+| 4 — AI Code Assistant | Grounded answers with citations | **Complete** |
+| Platform — Auth & ownership | Users own projects; protected API | **Complete** |
+| 5 — Advanced Developer Tools | Scale and deeper repo insights | **Not started** |
+
+---
+
+## Current state
+
+| Layer | Stack |
+|--------|--------|
+| Frontend | Next.js — auth pages, project picker, ZIP / Git / file import, **Search** / **Explain** |
+| Backend | FastAPI, JWT auth, SQLAlchemy async, Alembic, ingestion pipeline, retrieval, LLM + RAG |
+| Database | PostgreSQL 16 + **pgvector** + **HNSW**; `users`, `projects.user_id`, `project_sources` |
+
+**Product data model:**
+
+```text
+User
+  └── Project (workspace)
+        ├── ProjectSource[]   (git | zip | file — audit of imports)
+        ├── File[]
+        └── CodeChunk[] → optional embeddings → Search / Explain
+```
+
+**Backend ingestion flow:**
+
+```text
+Authenticated user selects owned Project
+        ↓
+Source (Git URL | ZIP | uploaded files)
+        ↓
+Importer (GitImporter | ZipImporter | FileImporter)
+        ↓
+ExtractedDocument[]  (CodeExtractor for trees; FileImporter direct)
+        ↓
+Persist / merge files → chunk → optional embed → record ProjectSource
+        ↓
+Search / Explain (JWT + ownership checks on every project route)
+```
+
+---
+
+## UI workflow (today)
+
+```text
+Register or log in (/register, /login) → JWT stored client-side
+        ↓
+Create or select a project (owned by current user)
+        ↓
+Import sources: Upload ZIP | Repository URL | Individual Files
+        ↓
+Browse discovered files in that project
+        ↓
+Project workspace — Search | Explain (tabbed)
+        ↓
+Results (ranked hits or RAG answer + citations)
+```
+
+### Search (UI label)
+
+**Purpose:** Locate relevant files, documents, and code in the **active project**.
+
+**Backend:** `POST /api/v1/projects/{id}/search` (auth required; ownership enforced).
+
+### Explain (UI label)
+
+**Purpose:** Understand the project via AI answers tied to indexed content.
+
+**Backend:** `POST /api/v1/projects/{id}/ask` (auth required; ownership enforced).
+
+---
+
+## Current MVP capabilities
+
+Requires Docker (or equivalent), PostgreSQL + pgvector, **`JWT_SECRET_KEY`**, backend **git** for clone, and OpenAI flags as documented.
+
+**Authentication & access**
+
+- **Register / login** — `POST /api/v1/auth/register`, `POST /api/v1/auth/login`
+- **JWT bearer** authentication; `GET /api/v1/auth/me`
+- Password hashing (**passlib + bcrypt**; **`bcrypt>=4.0.0,<4.1`** pinned for compatibility)
+- **Project ownership** — `projects.user_id`; users only see and mutate their projects
+- **Authorization tests** — cross-user access returns 404
+
+**Projects & sources**
+
+- **List / create / get** owned projects (`GET/POST /projects`, `GET /projects/{id}`)
+- **`project_sources`** — records each Git, ZIP, or file import (`source_type`, `source_name`, optional `source_url`)
+- One project can accumulate **multiple imports** (e.g. Git repo + PDF + Markdown); file import **merges** by path; ZIP/Git **replace** project files for that ingest
+
+**Ingestion & browsing**
+
+- **ZIP** — `POST .../upload`
+- **Git URL** — validate, shallow clone, `POST .../import`
+- **Individual files** — `.md`, `.markdown`, `.txt`, text-based `.pdf` via `POST .../files/import`
+- **Source-agnostic pipeline** — `backend/app/ingestion/`
+- Discovery rules, `.gitignore`, browse in UI
+
+**Indexing, search, assistant**
+
+- Chunking from `ExtractedDocument`; optional embeddings (`EMBEDDING_ENABLED`, default off)
+- pgvector + HNSW; Search and Explain UIs
+
+**Quality & tooling**
+
+- Backend tests (auth, authorization, ingestion, Git/file importers); **82 passed, 1 skipped**
+- Pytest ignores repo `.env` for deterministic feature flags
+- Frontend production build passes
+- Migration **`0005_users_and_project_ownership`**
+
+---
+
+## HTTP API (reference)
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/api/v1/auth/register` | Create account (returns JWT) |
+| POST | `/api/v1/auth/login` | Log in (returns JWT) |
+| GET | `/api/v1/auth/me` | Current user (Bearer token) |
+| GET | `/api/v1/projects` | List current user's projects |
+| POST | `/api/v1/projects` | Create project (owned by user) |
+| GET | `/api/v1/projects/{id}` | Get owned project |
+| POST | `/api/v1/projects/{id}/upload` | Upload ZIP |
+| POST | `/api/v1/projects/{id}/import` | Import Git URL |
+| POST | `/api/v1/projects/{id}/files/import` | Upload individual files (multipart) |
+| GET | `/api/v1/projects/{id}/files` | List files |
+| POST | `/api/v1/projects/{id}/search` | Semantic search |
+| POST | `/api/v1/projects/{id}/ask` | RAG explain |
+| GET | `/api/v1/health` | Health check |
+
+All **`/projects/*`** routes require **`Authorization: Bearer <token>`**.
+
+Search/ask still require **PostgreSQL + pgvector**, **`EMBEDDING_ENABLED`**, and for ask **`LLM_ENABLED`** + **`OPENAI_API_KEY`**. See [README.md](../README.md) and `.env.example`.
+
+---
+
+## Completed work (by phase)
+
+### Phase 1 — Repository Ingestion
+
+- ZIP, Git URL, individual file imports; ingestion refactor (`app/ingestion/`)
+- **Project sources** tracking; Docker **git** for clone
+
+### Phase 2 — Code Indexing
+
+- Chunks via `ExtractedDocument`; parsers; optional embeddings; migration `0004` HNSW
+
+### Phase 3 — Semantic Search
+
+- `search_similar_chunks`, search API, Search UI
+
+### Phase 4 — AI Code Assistant
+
+- LLM, RAG prompts, `assistant_service`, ask API, Explain UI, citation alignment
+
+### Platform — Authentication & project ownership
+
+- **`users`** table; **`projects.user_id`**; **`project_sources`**
+- JWT auth routes; protected project API; ownership in `project_service`
+- Frontend **`/login`**, **`/register`**, token storage, project-first workflow
+- Migration **`0005_users_and_project_ownership`**
+- **bcrypt pin** (`bcrypt<4.1`) for passlib compatibility
+
+| Area | Path |
+|------|------|
+| Auth | `backend/app/api/routes/auth.py`, `backend/app/core/security.py`, `backend/app/services/auth_service.py` |
+| Ownership | `backend/app/services/project_service.py` |
+| Sources | `backend/app/models/project_source.py`, `backend/app/services/project_source_service.py` |
+| Ingestion | `backend/app/ingestion/` |
+| Shell | `frontend/components/code-context-app.tsx`, `frontend/components/auth/auth-form.tsx` |
+
+---
+
+## Current limitations
+
+**Product & access**
+
+- **No OAuth** / social login, orgs, teams, or roles
+- **No password reset** or email verification
+- **No deployment** guide for production hosting in-repo (Compose is for local/dev)
+- Legacy **`projects` rows with `user_id` NULL** (pre-migration) are not accessible via the API
+
+**Ingestion & indexing**
+
+- **Public Git HTTP(S) only** — no private remotes or tokens
+- **PDF** — text extraction only (no OCR); scanned PDFs may fail
+- **Re-index** without re-import not supported
+- **Synchronous** ingest (no background workers)
+- No UI for **embedding coverage** / index health
+
+**Assistant UX**
+
+- **No streaming** responses
+- **No conversation history** / multi-turn threads
+
+**Advanced platform**
+
+- Hybrid retrieval, re-ranking, repo maps, dependency graphs, analytics, public chunk API — **not built**
+
+---
+
+## Recommended next priorities
+
+### High priority
+
+- **Deployment** — staging/production path (env, secrets, migrations, `JWT_SECRET_KEY`)
+- **Re-index workflow** — re-chunk / re-embed without full re-import; status in UI
+
+### Medium priority
+
+- **Private Git** — tokens / SSH for private remotes
+- **Streaming** Explain responses
+- **Conversation history**
+- **Retrieval tuning** and embedding/index status in UI
+
+### Future (Phase 5+)
+
+- Repository maps and navigation
+- Dependency insights
+- Background workers for large projects
+- Hybrid retrieval at scale
+
+---
+
+## Development notes
+
+### Run locally
+
+```bash
+docker compose up --build
+```
+
+- Frontend: http://localhost:3000  
+- Backend: http://localhost:8000 (`/api/v1/health`)  
+- Run **`alembic upgrade head`** (includes **0005**) before use  
+- Set **`JWT_SECRET_KEY`** in `.env` (see `.env.example`)  
+- Rebuild backend after **`requirements.txt`** or Dockerfile changes  
+
+### Migrations
+
+`0001` projects/files → `0002` chunks → `0003` symbol + embedding → `0004` HNSW → **`0005` users, project ownership, project_sources**.
+
+Legacy DBs from `init_db()` only: stamp through current head per existing docs, then `alembic upgrade head`.
+
+### Tests
+
+```bash
+cd backend && python -m pytest -q    # 82 passed, 1 skipped (default)
+cd frontend && npm run build
+```
+
+Postgres integration: `CODECONTEXT_INTEGRATION_DATABASE_URL=... pytest -m integration`
+
+---
+
+*When Phase 5 or major platform work ships, update **Phase overview**, **Completed work**, **Current MVP capabilities**, and **Recommended next priorities**.*
