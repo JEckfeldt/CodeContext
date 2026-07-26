@@ -282,6 +282,7 @@ export function CodeContextApp() {
                 getSnapshot={getProjectSnapshot}
                 activeProjectId={activeProject?.id ?? null}
                 onSelectProject={handleSelectProject}
+                onCreateProject={() => setShowNewProjectForm(true)}
               />
             </div>
           </div>
