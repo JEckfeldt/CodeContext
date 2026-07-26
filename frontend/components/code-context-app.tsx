@@ -2,17 +2,19 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { RepositoryAskSection } from "@/components/assistant/repository-ask-section";
+import { ProjectGrid } from "@/components/projects/ProjectGrid";
+import { ProjectOverview } from "@/components/projects/ProjectOverview";
 import {
   RepositoryUploader,
   type IngestSuccess,
 } from "@/components/repository/repository-uploader";
 import { FileBrowser } from "@/components/repository/file-browser";
-import { RepositoryView } from "@/components/repository/repository-view";
 import { RepositorySearchSection } from "@/components/search/repository-search-section";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   createProject,
   fetchCurrentUser,
@@ -21,9 +23,19 @@ import {
 } from "@/lib/api";
 import { clearAccessToken, getAccessToken } from "@/lib/auth-token";
 import { cn } from "@/lib/cn";
+import {
+  buildProjectSnapshot,
+  emptyProjectSnapshot,
+  type ImportSourceType,
+  type ProjectSnapshot,
+} from "@/lib/project-meta";
 import type { FileRecord, Project, User } from "@/types";
 
 type WorkspaceMode = "search" | "ask";
+
+function createImportTypeMap(): Record<string, Set<ImportSourceType>> {
+  return {};
+}
 
 export function CodeContextApp() {
   const router = useRouter();
@@ -32,18 +44,114 @@ export function CodeContextApp() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeProject, setActiveProject] = useState<Project | null>(null);
   const [files, setFiles] = useState<FileRecord[]>([]);
+  const [projectSnapshots, setProjectSnapshots] = useState<Record<string, ProjectSnapshot>>({});
+  const [importTypesByProject, setImportTypesByProject] = useState<
+    Record<string, Set<ImportSourceType>>
+  >(createImportTypeMap);
   const [lastIngestStatus, setLastIngestStatus] = useState<string>("pending");
   const [newProjectName, setNewProjectName] = useState("");
+  const [showNewProjectForm, setShowNewProjectForm] = useState(false);
   const [creatingProject, setCreatingProject] = useState(false);
   const [searchSession, setSearchSession] = useState(0);
   const [askSession, setAskSession] = useState(0);
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("search");
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const loadProjectFiles = useCallback(async (projectId: string) => {
-    const projectFiles = await listProjectFiles(projectId);
-    setFiles(projectFiles);
+  const activeSnapshot = useMemo(() => {
+    if (!activeProject) return null;
+    return projectSnapshots[activeProject.id] ?? emptyProjectSnapshot(lastIngestStatus);
+  }, [activeProject, lastIngestStatus, projectSnapshots]);
+
+  const updateProjectSnapshot = useCallback(
+    (
+      projectId: string,
+      projectFiles: FileRecord[],
+      options?: {
+        chunkCount?: number | null;
+        lastIngestStatus?: string;
+        lastIndexedAt?: string | null;
+        addImportType?: ImportSourceType;
+      },
+    ) => {
+      setImportTypesByProject((currentImportTypes) => {
+        const importTypes = new Set(currentImportTypes[projectId] ?? []);
+        if (options?.addImportType) {
+          importTypes.add(options.addImportType);
+        }
+
+        setProjectSnapshots((currentSnapshots) => ({
+          ...currentSnapshots,
+          [projectId]: buildProjectSnapshot({
+            files: projectFiles,
+            importTypes,
+            chunkCount:
+              options?.chunkCount !== undefined
+                ? options.chunkCount
+                : (currentSnapshots[projectId]?.chunkCount ?? null),
+            lastIngestStatus:
+              options?.lastIngestStatus ??
+              currentSnapshots[projectId]?.lastIngestStatus ??
+              (projectFiles.length > 0 ? "indexed" : "pending"),
+            lastIndexedAt:
+              options?.lastIndexedAt ??
+              currentSnapshots[projectId]?.lastIndexedAt ??
+              (projectFiles.length > 0 ? new Date().toISOString() : null),
+            embeddingsEnabled: currentSnapshots[projectId]?.embeddingsEnabled ?? null,
+          }),
+        }));
+
+        if (!options?.addImportType) {
+          return currentImportTypes;
+        }
+
+        return { ...currentImportTypes, [projectId]: importTypes };
+      });
+    },
+    [],
+  );
+
+  const refreshAllProjectSnapshots = useCallback(async (userProjects: Project[]) => {
+    const entries = await Promise.all(
+      userProjects.map(async (project) => {
+        try {
+          const projectFiles = await listProjectFiles(project.id);
+          return [project.id, projectFiles] as const;
+        } catch {
+          return [project.id, [] as FileRecord[]] as const;
+        }
+      }),
+    );
+
+    setImportTypesByProject((importTypesMap) => {
+      setProjectSnapshots((current) => {
+        const next = { ...current };
+        for (const [projectId, projectFiles] of entries) {
+          next[projectId] = buildProjectSnapshot({
+            files: projectFiles,
+            importTypes: importTypesMap[projectId] ?? [],
+            chunkCount: current[projectId]?.chunkCount ?? null,
+            lastIngestStatus:
+              projectFiles.length > 0
+                ? current[projectId]?.lastIngestStatus ?? "indexed"
+                : "pending",
+            lastIndexedAt: current[projectId]?.lastIndexedAt ?? null,
+            embeddingsEnabled: current[projectId]?.embeddingsEnabled ?? null,
+          });
+        }
+        return next;
+      });
+      return importTypesMap;
+    });
   }, []);
+
+  const loadProjectFiles = useCallback(
+    async (project: Project) => {
+      const projectFiles = await listProjectFiles(project.id);
+      setFiles(projectFiles);
+      updateProjectSnapshot(project.id, projectFiles);
+    },
+    [updateProjectSnapshot],
+  );
 
   const bootstrap = useCallback(async () => {
     if (!getAccessToken()) {
@@ -57,6 +165,7 @@ export function CodeContextApp() {
       setUser(currentUser);
       setProjects(userProjects);
       setLoadError(null);
+      await refreshAllProjectSnapshots(userProjects);
     } catch {
       clearAccessToken();
       router.replace("/login");
@@ -64,7 +173,7 @@ export function CodeContextApp() {
     } finally {
       setAuthReady(true);
     }
-  }, [router]);
+  }, [refreshAllProjectSnapshots, router]);
 
   useEffect(() => {
     void bootstrap();
@@ -75,14 +184,28 @@ export function CodeContextApp() {
       setFiles([]);
       return;
     }
-    void loadProjectFiles(activeProject.id).catch((err: unknown) => {
+    void loadProjectFiles(activeProject).catch((err: unknown) => {
       setLoadError(err instanceof Error ? err.message : "Could not load project files.");
     });
   }, [activeProject, loadProjectFiles]);
 
+  function handleSelectProject(project: Project) {
+    setActiveProject(project);
+    setLastIngestStatus(projectSnapshots[project.id]?.lastIngestStatus ?? "pending");
+    setLoadError(null);
+  }
+
   function handleIngestSuccess(result: IngestSuccess) {
+    if (!activeProject) return;
+
     setFiles(result.files);
     setLastIngestStatus(result.upload.ingestion_status);
+    updateProjectSnapshot(activeProject.id, result.files, {
+      chunkCount: result.upload.chunks_created,
+      lastIngestStatus: result.upload.ingestion_status,
+      lastIndexedAt: new Date().toISOString(),
+      addImportType: result.sourceType,
+    });
     setSearchSession((value) => value + 1);
     setAskSession((value) => value + 1);
   }
@@ -97,8 +220,13 @@ export function CodeContextApp() {
     try {
       const project = await createProject(name);
       setProjects((current) => [project, ...current]);
+      setProjectSnapshots((current) => ({
+        ...current,
+        [project.id]: emptyProjectSnapshot(),
+      }));
       setActiveProject(project);
       setNewProjectName("");
+      setShowNewProjectForm(false);
       setFiles([]);
       setLastIngestStatus("pending");
     } catch (err) {
@@ -145,68 +273,87 @@ export function CodeContextApp() {
       </header>
 
       <main className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
-        <div className="mb-8 max-w-2xl">
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-[1.75rem]">
-            AI workspace for your project
-          </h1>
-          <p className="mt-2 text-sm leading-relaxed text-muted sm:text-[0.9375rem]">
-            Create a project, import sources, then search and explain across all indexed content.
-          </p>
-        </div>
-
-        <section aria-labelledby="projects-heading" className="panel mb-8 p-5 sm:p-6 lg:p-7">
-          <p id="projects-heading" className="section-label">
-            Projects
-          </p>
-          <p className="section-title mt-1">Your workspaces</p>
-          <p className="mt-1 max-w-xl text-sm text-muted">
-            Each project can combine Git repos, ZIP archives, and individual files.
-          </p>
-
-          <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
-            <div className="min-w-[12rem] flex-1">
-              <label htmlFor="project-select" className="text-sm font-medium text-foreground">
-                Active project
-              </label>
-              <select
-                id="project-select"
-                value={activeProject?.id ?? ""}
-                onChange={(event) => {
-                  const project = projects.find((item) => item.id === event.target.value) ?? null;
-                  setActiveProject(project);
-                  setLastIngestStatus(project ? "pending" : "pending");
-                }}
-                className="mt-2 w-full rounded-md border border-border bg-surface px-3 py-2.5 text-sm"
-              >
-                <option value="">Select a project…</option>
-                {projects.map((project) => (
-                  <option key={project.id} value={project.id}>
-                    {project.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="min-w-[12rem] flex-1">
-              <label htmlFor="new-project-name" className="text-sm font-medium text-foreground">
-                New project
-              </label>
-              <input
-                id="new-project-name"
-                value={newProjectName}
-                onChange={(event) => setNewProjectName(event.target.value)}
-                placeholder="My Finance App"
-                className="mt-2 w-full rounded-md border border-border bg-surface px-3 py-2.5 text-sm"
-              />
+        <section className="mb-8 border-b border-border-subtle pb-8">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="max-w-2xl">
+              <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-[1.75rem]">
+                CodeContext
+              </h1>
+              <p className="mt-2 text-sm leading-relaxed text-muted sm:text-[0.9375rem]">
+                AI Workspace for Code &amp; Documents
+              </p>
             </div>
             <Button
               type="button"
               variant="primary"
-              className="h-10 w-full sm:w-auto"
-              disabled={creatingProject || !newProjectName.trim()}
-              onClick={() => void handleCreateProject()}
+              className="h-10 shrink-0"
+              onClick={() => setShowNewProjectForm((value) => !value)}
             >
-              {creatingProject ? "Creating…" : "Create project"}
+              + New Project
             </Button>
+          </div>
+
+          {showNewProjectForm ? (
+            <Card className="mt-5 shadow-sm">
+              <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-end sm:p-5">
+                <div className="min-w-0 flex-1">
+                  <label htmlFor="new-project-name" className="text-sm font-medium text-foreground">
+                    Project name
+                  </label>
+                  <input
+                    id="new-project-name"
+                    value={newProjectName}
+                    onChange={(event) => setNewProjectName(event.target.value)}
+                    placeholder="Finance Tracker"
+                    className="mt-2 w-full rounded-md border border-border bg-surface px-3 py-2.5 text-sm"
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        void handleCreateProject();
+                      }
+                    }}
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-10"
+                    onClick={() => {
+                      setShowNewProjectForm(false);
+                      setNewProjectName("");
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="primary"
+                    className="h-10"
+                    disabled={creatingProject || !newProjectName.trim()}
+                    onClick={() => void handleCreateProject()}
+                  >
+                    {creatingProject ? "Creating…" : "Create project"}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
+
+          <div className="mt-8">
+            <p className="section-label">Projects</p>
+            <p className="section-title mt-1">Your workspaces</p>
+            <p className="mt-1 max-w-xl text-sm text-muted">
+              Select a project to import sources, browse files, and run Search or Explain.
+            </p>
+            <div className="mt-5">
+              <ProjectGrid
+                projects={projects}
+                snapshots={projectSnapshots}
+                activeProjectId={activeProject?.id ?? null}
+                onSelectProject={handleSelectProject}
+              />
+            </div>
           </div>
 
           {loadError ? (
@@ -216,14 +363,35 @@ export function CodeContextApp() {
           ) : null}
         </section>
 
-        <section aria-labelledby="connect-heading" className="panel p-5 sm:p-6 lg:p-7">
+        <section aria-labelledby="selected-project-heading" className="panel mb-8 p-5 sm:p-6 lg:p-7">
+          <p id="selected-project-heading" className="section-label">
+            Selected Project
+          </p>
+          <p className="section-title mt-1">
+            {activeProject ? activeProject.name : "No project selected"}
+          </p>
+
+          {!activeProject ? (
+            <div className="status-banner mt-5">
+              <p className="text-sm text-muted">
+                Choose a project card above to open its workspace.
+              </p>
+            </div>
+          ) : activeSnapshot ? (
+            <div className="mt-6">
+              <ProjectOverview project={activeProject} snapshot={activeSnapshot} />
+            </div>
+          ) : null}
+        </section>
+
+        <section aria-labelledby="connect-heading" className="panel mb-8 p-5 sm:p-6 lg:p-7">
           <div className="mb-5">
             <p id="connect-heading" className="section-label">
-              Sources
+              Import Sources
             </p>
-            <p className="section-title mt-1">Import content</p>
+            <p className="section-title mt-1">Add content to this project</p>
             <p className="mt-1 max-w-xl text-sm text-muted">
-              Choose a project above, then add Git URLs, ZIP archives, or individual files.
+              Import Git repositories, ZIP archives, or individual files into the selected project.
             </p>
           </div>
 
@@ -235,7 +403,7 @@ export function CodeContextApp() {
 
           {!activeProject ? (
             <div className="status-banner mt-5">
-              <p className="text-sm text-muted">Create or select a project before importing sources.</p>
+              <p className="text-sm text-muted">Select a project before importing sources.</p>
             </div>
           ) : !projectReady ? (
             <div className="status-banner mt-5">
@@ -244,23 +412,16 @@ export function CodeContextApp() {
               </p>
             </div>
           ) : (
-            <div className="mt-6 space-y-5 border-t border-border-subtle pt-6">
-              <RepositoryView
-                name={activeProject.name}
-                ingestionStatus={lastIngestStatus}
-                fileCount={files.length}
-              />
-              <div>
-                <p className="section-label mb-3">Discovered files</p>
-                <FileBrowser files={files} />
-              </div>
+            <div className="mt-6 border-t border-border-subtle pt-6">
+              <p className="section-label mb-3">Discovered files</p>
+              <FileBrowser files={files} />
             </div>
           )}
         </section>
 
         <section
           aria-labelledby="workspace-heading"
-          className="panel mt-8 flex min-h-[32rem] flex-col p-5 sm:mt-10 sm:p-6 lg:p-7"
+          className="panel flex min-h-[32rem] flex-col p-5 sm:p-6 lg:p-7"
         >
           <div className="mb-6 border-b border-border-subtle pb-5">
             <p id="workspace-heading" className="section-label">

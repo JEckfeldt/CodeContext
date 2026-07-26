@@ -10,11 +10,13 @@ import {
   uploadRepository,
 } from "@/lib/api";
 import { cn } from "@/lib/cn";
+import type { ImportSourceType } from "@/lib/project-meta";
 import type { FileRecord, UploadResult } from "@/types";
 
 export type IngestSuccess = {
   upload: UploadResult;
   files: FileRecord[];
+  sourceType: ImportSourceType;
 };
 
 const INDIVIDUAL_FILE_ACCEPT = ".md,.markdown,.txt,.pdf,text/markdown,text/plain,application/pdf";
@@ -34,7 +36,7 @@ export function RepositoryUploader({
 }: RepositoryUploaderProps) {
   const zipInputRef = useRef<HTMLInputElement>(null);
   const filesInputRef = useRef<HTMLInputElement>(null);
-  const [source, setSource] = useState<ConnectSource>("zip");
+  const [source, setSource] = useState<ConnectSource>("git");
   const [selectedZip, setSelectedZip] = useState<File | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [gitUrl, setGitUrl] = useState("");
@@ -43,9 +45,9 @@ export function RepositoryUploader({
 
   const blocked = disabled || loading || !projectId;
 
-  async function refreshAfterIngest(upload: UploadResult) {
+  async function refreshAfterIngest(upload: UploadResult, sourceType: ImportSourceType) {
     const files = await listProjectFiles(projectId);
-    onSuccess({ upload, files });
+    onSuccess({ upload, files, sourceType });
   }
 
   async function handleZipUpload() {
@@ -56,7 +58,7 @@ export function RepositoryUploader({
 
     try {
       const upload = await uploadRepository(projectId, selectedZip);
-      await refreshAfterIngest(upload);
+      await refreshAfterIngest(upload, "zip");
       setSelectedZip(null);
       if (zipInputRef.current) zipInputRef.current.value = "";
     } catch (err) {
@@ -75,7 +77,7 @@ export function RepositoryUploader({
 
     try {
       const upload = await importGitRepository(projectId, url);
-      await refreshAfterIngest(upload);
+      await refreshAfterIngest(upload, "git");
       setGitUrl("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Import failed.");
@@ -92,7 +94,7 @@ export function RepositoryUploader({
 
     try {
       const upload = await importProjectFiles(projectId, selectedFiles);
-      await refreshAfterIngest(upload);
+      await refreshAfterIngest(upload, "file");
       setSelectedFiles([]);
       if (filesInputRef.current) filesInputRef.current.value = "";
     } catch (err) {
@@ -118,8 +120,8 @@ export function RepositoryUploader({
       >
         {(
           [
-            ["zip", "Upload ZIP"],
-            ["git", "Repository URL"],
+            ["git", "Git Repository"],
+            ["zip", "ZIP Upload"],
             ["files", "Individual Files"],
           ] as const
         ).map(([value, label]) => (
