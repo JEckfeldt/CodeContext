@@ -1,17 +1,15 @@
-import type { FileRecord } from "@/types";
+import type { FileRecord, Project } from "@/types";
 
 export type ImportSourceType = "git" | "zip" | "file";
 
 export type ProjectSnapshot = {
   fileCount: number;
-  chunkCount: number | null;
+  chunkCount: number;
+  sourceCount: number;
+  embeddingCount: number;
   sourceBadges: string[];
-  /** TODO: replace with project_sources API count when available */
-  sourceCount: number | null;
   lastIngestStatus: string;
   lastIndexedAt: string | null;
-  /** TODO: replace with backend project settings when available */
-  embeddingsEnabled: boolean | null;
 };
 
 const BADGE_ORDER = ["Git", "ZIP", "PDF", "Markdown", "Text", "Files"] as const;
@@ -19,12 +17,12 @@ const BADGE_ORDER = ["Git", "ZIP", "PDF", "Markdown", "Text", "Files"] as const;
 export function emptyProjectSnapshot(lastIngestStatus = "pending"): ProjectSnapshot {
   return {
     fileCount: 0,
-    chunkCount: null,
+    chunkCount: 0,
+    sourceCount: 0,
+    embeddingCount: 0,
     sourceBadges: [],
-    sourceCount: null,
     lastIngestStatus,
     lastIndexedAt: null,
-    embeddingsEnabled: null,
   };
 }
 
@@ -50,23 +48,26 @@ export function deriveSourceBadges(
   return BADGE_ORDER.filter((badge) => badges.has(badge));
 }
 
-export function buildProjectSnapshot(input: {
-  files: FileRecord[];
-  importTypes: Iterable<ImportSourceType>;
-  chunkCount?: number | null;
-  lastIngestStatus?: string;
-  lastIndexedAt?: string | null;
-  embeddingsEnabled?: boolean | null;
-}): ProjectSnapshot {
-  const sourceBadges = deriveSourceBadges(input.files, input.importTypes);
+export function snapshotFromProject(
+  project: Project,
+  options?: {
+    files?: FileRecord[];
+    importTypes?: Iterable<ImportSourceType>;
+    lastIngestStatus?: string;
+  },
+): ProjectSnapshot {
+  const files = options?.files ?? [];
+  const importTypes = options?.importTypes ?? [];
 
   return {
-    fileCount: input.files.length,
-    chunkCount: input.chunkCount ?? null,
-    sourceBadges,
-    sourceCount: sourceBadges.length > 0 ? sourceBadges.length : null,
-    lastIngestStatus: input.lastIngestStatus ?? (input.files.length > 0 ? "indexed" : "pending"),
-    lastIndexedAt: input.lastIndexedAt ?? null,
-    embeddingsEnabled: input.embeddingsEnabled ?? null,
+    fileCount: project.stats.file_count,
+    chunkCount: project.stats.chunk_count,
+    sourceCount: project.stats.source_count,
+    embeddingCount: project.stats.embedding_count,
+    sourceBadges: deriveSourceBadges(files, importTypes),
+    lastIngestStatus:
+      options?.lastIngestStatus ??
+      (project.stats.file_count > 0 ? "indexed" : "pending"),
+    lastIndexedAt: project.stats.last_indexed_at,
   };
 }

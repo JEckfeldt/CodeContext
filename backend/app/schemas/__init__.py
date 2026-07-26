@@ -15,6 +15,7 @@ from app.schemas.project import (
     ProjectImportRequest,
     ProjectImportSourceType,
     ProjectRead,
+    ProjectStatsRead,
     ProjectUploadResponse,
 )
 from app.schemas.search import ChunkSearchHit, ProjectSearchRequest, ProjectSearchResponse
@@ -29,6 +30,7 @@ __all__ = [
     "ProjectImportSourceType",
     "ProjectCreate",
     "ProjectRead",
+    "ProjectStatsRead",
     "ProjectSearchRequest",
     "ProjectSearchResponse",
     "ProjectUploadResponse",

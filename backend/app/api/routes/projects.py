@@ -25,9 +25,11 @@ from app.schemas import (
     ProjectRead,
     ProjectSearchRequest,
     ProjectSearchResponse,
+    ProjectStatsRead,
     ProjectUploadResponse,
 )
 from app.services import project_service
+from app.services import project_stats_service
 from app.services.assistant_service import ask_question
 from app.services.ingestion_service import ingestion_service
 from app.services.project_service import ProjectNotFoundError
@@ -43,13 +45,54 @@ def _project_not_found(exc: ProjectNotFoundError) -> HTTPException:
     )
 
 
+def _stats_to_read(stats: project_stats_service.ProjectStats) -> ProjectStatsRead:
+    return ProjectStatsRead(
+        file_count=stats.file_count,
+        chunk_count=stats.chunk_count,
+        source_count=stats.source_count,
+        embedding_count=stats.embedding_count,
+        last_indexed_at=stats.last_indexed_at,
+    )
+
+
+async def _project_to_read(
+    session: DbSession,
+    project,
+) -> ProjectRead:
+    stats = await project_stats_service.get_project_stats(session, project.id)
+    return ProjectRead(
+        id=project.id,
+        name=project.name,
+        created_at=project.created_at,
+        updated_at=project.updated_at,
+        stats=_stats_to_read(stats),
+    )
+
+
+async def _projects_to_read(session: DbSession, projects: list) -> list[ProjectRead]:
+    stats_map = await project_stats_service.get_project_stats_batch(
+        session,
+        [project.id for project in projects],
+    )
+    return [
+        ProjectRead(
+            id=project.id,
+            name=project.name,
+            created_at=project.created_at,
+            updated_at=project.updated_at,
+            stats=_stats_to_read(stats_map.get(project.id, project_stats_service.empty_project_stats())),
+        )
+        for project in projects
+    ]
+
+
 @router.get("", response_model=list[ProjectRead])
 async def list_projects(
     session: DbSession,
     current_user: CurrentUser,
 ) -> list[ProjectRead]:
     projects = await project_service.list_projects_for_user(session, current_user.id)
-    return [ProjectRead.model_validate(project) for project in projects]
+    return await _projects_to_read(session, projects)
 
 
 @router.get("/{project_id}", response_model=ProjectRead)
@@ -66,7 +109,7 @@ async def get_project(
         )
     except ProjectNotFoundError as exc:
         raise _project_not_found(exc) from exc
-    return ProjectRead.model_validate(project)
+    return await _project_to_read(session, project)
 
 
 @router.post("", response_model=ProjectRead, status_code=status.HTTP_201_CREATED)
@@ -80,7 +123,7 @@ async def create_project(
         payload,
         user_id=current_user.id,
     )
-    return ProjectRead.model_validate(project)
+    return await _project_to_read(session, project)
 
 
 @router.post("/{project_id}/upload", response_model=ProjectUploadResponse)

@@ -10,11 +10,20 @@ export type AuthResponse = {
   user: User;
 };
 
+export type ProjectStats = {
+  file_count: number;
+  chunk_count: number;
+  source_count: number;
+  embedding_count: number;
+  last_indexed_at: string | null;
+};
+
 export type Project = {
   id: string;
   name: string;
   created_at: string;
   updated_at: string;
+  stats: ProjectStats;
 };
 
 export type UploadResult = {

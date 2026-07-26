@@ -18,6 +18,14 @@ class ProjectImportRequest(BaseModel):
     url: str = Field(min_length=1)
 
 
+class ProjectStatsRead(BaseModel):
+    file_count: int
+    chunk_count: int
+    source_count: int
+    embedding_count: int
+    last_indexed_at: datetime | None
+
+
 class ProjectRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -25,6 +33,7 @@ class ProjectRead(BaseModel):
     name: str
     created_at: datetime
     updated_at: datetime
+    stats: ProjectStatsRead
 
 
 class ProjectUploadResponse(BaseModel):

@@ -24,8 +24,7 @@ import {
 import { clearAccessToken, getAccessToken } from "@/lib/auth-token";
 import { cn } from "@/lib/cn";
 import {
-  buildProjectSnapshot,
-  emptyProjectSnapshot,
+  snapshotFromProject,
   type ImportSourceType,
   type ProjectSnapshot,
 } from "@/lib/project-meta";
@@ -44,7 +43,6 @@ export function CodeContextApp() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeProject, setActiveProject] = useState<Project | null>(null);
   const [files, setFiles] = useState<FileRecord[]>([]);
-  const [projectSnapshots, setProjectSnapshots] = useState<Record<string, ProjectSnapshot>>({});
   const [importTypesByProject, setImportTypesByProject] = useState<
     Record<string, Set<ImportSourceType>>
   >(createImportTypeMap);
@@ -57,101 +55,35 @@ export function CodeContextApp() {
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("search");
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const activeSnapshot = useMemo(() => {
-    if (!activeProject) return null;
-    return projectSnapshots[activeProject.id] ?? emptyProjectSnapshot(lastIngestStatus);
-  }, [activeProject, lastIngestStatus, projectSnapshots]);
-
-  const updateProjectSnapshot = useCallback(
-    (
-      projectId: string,
-      projectFiles: FileRecord[],
-      options?: {
-        chunkCount?: number | null;
-        lastIngestStatus?: string;
-        lastIndexedAt?: string | null;
-        addImportType?: ImportSourceType;
-      },
-    ) => {
-      setImportTypesByProject((currentImportTypes) => {
-        const importTypes = new Set(currentImportTypes[projectId] ?? []);
-        if (options?.addImportType) {
-          importTypes.add(options.addImportType);
-        }
-
-        setProjectSnapshots((currentSnapshots) => ({
-          ...currentSnapshots,
-          [projectId]: buildProjectSnapshot({
-            files: projectFiles,
-            importTypes,
-            chunkCount:
-              options?.chunkCount !== undefined
-                ? options.chunkCount
-                : (currentSnapshots[projectId]?.chunkCount ?? null),
-            lastIngestStatus:
-              options?.lastIngestStatus ??
-              currentSnapshots[projectId]?.lastIngestStatus ??
-              (projectFiles.length > 0 ? "indexed" : "pending"),
-            lastIndexedAt:
-              options?.lastIndexedAt ??
-              currentSnapshots[projectId]?.lastIndexedAt ??
-              (projectFiles.length > 0 ? new Date().toISOString() : null),
-            embeddingsEnabled: currentSnapshots[projectId]?.embeddingsEnabled ?? null,
-          }),
-        }));
-
-        if (!options?.addImportType) {
-          return currentImportTypes;
-        }
-
-        return { ...currentImportTypes, [projectId]: importTypes };
-      });
-    },
-    [],
+  const getProjectSnapshot = useCallback(
+    (project: Project): ProjectSnapshot =>
+      snapshotFromProject(project, {
+        files: activeProject?.id === project.id ? files : [],
+        importTypes: importTypesByProject[project.id] ?? [],
+        lastIngestStatus:
+          activeProject?.id === project.id ? lastIngestStatus : undefined,
+      }),
+    [activeProject, files, importTypesByProject, lastIngestStatus],
   );
 
-  const refreshAllProjectSnapshots = useCallback(async (userProjects: Project[]) => {
-    const entries = await Promise.all(
-      userProjects.map(async (project) => {
-        try {
-          const projectFiles = await listProjectFiles(project.id);
-          return [project.id, projectFiles] as const;
-        } catch {
-          return [project.id, [] as FileRecord[]] as const;
-        }
-      }),
-    );
+  const activeSnapshot = useMemo(() => {
+    if (!activeProject) return null;
+    return getProjectSnapshot(activeProject);
+  }, [activeProject, getProjectSnapshot]);
 
-    setImportTypesByProject((importTypesMap) => {
-      setProjectSnapshots((current) => {
-        const next = { ...current };
-        for (const [projectId, projectFiles] of entries) {
-          next[projectId] = buildProjectSnapshot({
-            files: projectFiles,
-            importTypes: importTypesMap[projectId] ?? [],
-            chunkCount: current[projectId]?.chunkCount ?? null,
-            lastIngestStatus:
-              projectFiles.length > 0
-                ? current[projectId]?.lastIngestStatus ?? "indexed"
-                : "pending",
-            lastIndexedAt: current[projectId]?.lastIndexedAt ?? null,
-            embeddingsEnabled: current[projectId]?.embeddingsEnabled ?? null,
-          });
-        }
-        return next;
-      });
-      return importTypesMap;
+  const refreshProjects = useCallback(async () => {
+    const userProjects = await listProjects();
+    setProjects(userProjects);
+    setActiveProject((current) => {
+      if (!current) return null;
+      return userProjects.find((project) => project.id === current.id) ?? current;
     });
   }, []);
 
-  const loadProjectFiles = useCallback(
-    async (project: Project) => {
-      const projectFiles = await listProjectFiles(project.id);
-      setFiles(projectFiles);
-      updateProjectSnapshot(project.id, projectFiles);
-    },
-    [updateProjectSnapshot],
-  );
+  const loadProjectFiles = useCallback(async (project: Project) => {
+    const projectFiles = await listProjectFiles(project.id);
+    setFiles(projectFiles);
+  }, []);
 
   const bootstrap = useCallback(async () => {
     if (!getAccessToken()) {
@@ -165,7 +97,6 @@ export function CodeContextApp() {
       setUser(currentUser);
       setProjects(userProjects);
       setLoadError(null);
-      await refreshAllProjectSnapshots(userProjects);
     } catch {
       clearAccessToken();
       router.replace("/login");
@@ -173,7 +104,7 @@ export function CodeContextApp() {
     } finally {
       setAuthReady(true);
     }
-  }, [refreshAllProjectSnapshots, router]);
+  }, [router]);
 
   useEffect(() => {
     void bootstrap();
@@ -191,7 +122,7 @@ export function CodeContextApp() {
 
   function handleSelectProject(project: Project) {
     setActiveProject(project);
-    setLastIngestStatus(projectSnapshots[project.id]?.lastIngestStatus ?? "pending");
+    setLastIngestStatus(project.stats.file_count > 0 ? "indexed" : "pending");
     setLoadError(null);
   }
 
@@ -200,11 +131,13 @@ export function CodeContextApp() {
 
     setFiles(result.files);
     setLastIngestStatus(result.upload.ingestion_status);
-    updateProjectSnapshot(activeProject.id, result.files, {
-      chunkCount: result.upload.chunks_created,
-      lastIngestStatus: result.upload.ingestion_status,
-      lastIndexedAt: new Date().toISOString(),
-      addImportType: result.sourceType,
+    setImportTypesByProject((current) => {
+      const importTypes = new Set(current[activeProject.id] ?? []);
+      importTypes.add(result.sourceType);
+      return { ...current, [activeProject.id]: importTypes };
+    });
+    void refreshProjects().catch((err: unknown) => {
+      setLoadError(err instanceof Error ? err.message : "Could not refresh project stats.");
     });
     setSearchSession((value) => value + 1);
     setAskSession((value) => value + 1);
@@ -220,10 +153,6 @@ export function CodeContextApp() {
     try {
       const project = await createProject(name);
       setProjects((current) => [project, ...current]);
-      setProjectSnapshots((current) => ({
-        ...current,
-        [project.id]: emptyProjectSnapshot(),
-      }));
       setActiveProject(project);
       setNewProjectName("");
       setShowNewProjectForm(false);
@@ -249,7 +178,8 @@ export function CodeContextApp() {
     );
   }
 
-  const projectReady = activeProject !== null && files.length > 0;
+  const projectIndexed =
+    activeProject !== null && activeProject.stats.file_count > 0;
 
   return (
     <div className="min-h-screen bg-background">
@@ -349,7 +279,7 @@ export function CodeContextApp() {
             <div className="mt-5">
               <ProjectGrid
                 projects={projects}
-                snapshots={projectSnapshots}
+                getSnapshot={getProjectSnapshot}
                 activeProjectId={activeProject?.id ?? null}
                 onSelectProject={handleSelectProject}
               />
@@ -405,7 +335,7 @@ export function CodeContextApp() {
             <div className="status-banner mt-5">
               <p className="text-sm text-muted">Select a project before importing sources.</p>
             </div>
-          ) : !projectReady ? (
+          ) : !projectIndexed ? (
             <div className="status-banner mt-5">
               <p className="text-sm text-muted">
                 No indexed content yet. Import a source to enable search and explain.
@@ -414,7 +344,11 @@ export function CodeContextApp() {
           ) : (
             <div className="mt-6 border-t border-border-subtle pt-6">
               <p className="section-label mb-3">Discovered files</p>
-              <FileBrowser files={files} />
+              {files.length > 0 ? (
+                <FileBrowser files={files} />
+              ) : (
+                <p className="text-sm text-muted">Loading file list…</p>
+              )}
             </div>
           )}
         </section>
@@ -482,7 +416,7 @@ export function CodeContextApp() {
               <RepositorySearchSection
                 key={`search-${searchSession}`}
                 projectId={activeProject?.id ?? ""}
-                disabled={!projectReady}
+                disabled={!projectIndexed}
               />
             </div>
 
@@ -499,7 +433,7 @@ export function CodeContextApp() {
               <RepositoryAskSection
                 key={`ask-${askSession}`}
                 projectId={activeProject?.id ?? ""}
-                disabled={!projectReady}
+                disabled={!projectIndexed}
               />
             </div>
           </div>

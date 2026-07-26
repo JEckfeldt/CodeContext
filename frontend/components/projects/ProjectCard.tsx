@@ -12,15 +12,18 @@ type ProjectCardProps = {
   onSelect: (project: Project) => void;
 };
 
-function formatCount(value: number | null, label: string): string {
-  if (value === null) return `— ${label}`;
-  return `${value.toLocaleString()} ${label}`;
+function formatCount(value: number, singular: string, plural: string): string {
+  return `${value.toLocaleString()} ${value === 1 ? singular : plural}`;
 }
 
 export function ProjectCard({ project, snapshot, selected, onSelect }: ProjectCardProps) {
   const updatedLabel = formatRelativeTime(project.updated_at);
   const badgeLine =
-    snapshot.sourceBadges.length > 0 ? snapshot.sourceBadges.join(" • ") : "No sources yet";
+    snapshot.sourceBadges.length > 0
+      ? snapshot.sourceBadges.join(" • ")
+      : snapshot.sourceCount > 0
+        ? `${snapshot.sourceCount} ${snapshot.sourceCount === 1 ? "source" : "sources"}`
+        : "No sources yet";
 
   return (
     <button
@@ -62,14 +65,21 @@ export function ProjectCard({ project, snapshot, selected, onSelect }: ProjectCa
                   {badge}
                 </Badge>
               ))
+            ) : snapshot.sourceCount > 0 ? (
+              <Badge variant={selected ? "primary" : "outline"}>
+                {snapshot.sourceCount} {snapshot.sourceCount === 1 ? "Source" : "Sources"}
+              </Badge>
             ) : (
               <Badge variant="outline">Empty</Badge>
             )}
           </div>
 
           <div className="mt-auto space-y-1 border-t border-border-subtle pt-3 text-xs text-muted">
-            <p>{formatCount(snapshot.fileCount, snapshot.fileCount === 1 ? "File" : "Files")}</p>
-            <p>{formatCount(snapshot.chunkCount, snapshot.chunkCount === 1 ? "Chunk" : "Chunks")}</p>
+            <p>{formatCount(snapshot.fileCount, "File", "Files")}</p>
+            <p>{formatCount(snapshot.chunkCount, "Chunk", "Chunks")}</p>
+            {snapshot.sourceCount > 0 ? (
+              <p>{formatCount(snapshot.sourceCount, "Source", "Sources")}</p>
+            ) : null}
             <p className="text-muted-foreground">Updated {updatedLabel}</p>
           </div>
         </CardContent>

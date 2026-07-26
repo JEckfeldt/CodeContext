@@ -1,29 +1,25 @@
 import { ProjectCard } from "@/components/projects/ProjectCard";
-import { emptyProjectSnapshot, type ProjectSnapshot } from "@/lib/project-meta";
+import { ProjectDashboardEmptyState } from "@/components/projects/ProjectDashboardEmptyState";
+import type { ProjectSnapshot } from "@/lib/project-meta";
 import type { Project } from "@/types";
 
 type ProjectGridProps = {
   projects: Project[];
-  snapshots: Record<string, ProjectSnapshot>;
+  getSnapshot: (project: Project) => ProjectSnapshot;
   activeProjectId: string | null;
   onSelectProject: (project: Project) => void;
+  onCreateProject: () => void;
 };
 
 export function ProjectGrid({
   projects,
-  snapshots,
+  getSnapshot,
   activeProjectId,
   onSelectProject,
+  onCreateProject,
 }: ProjectGridProps) {
   if (projects.length === 0) {
-    return (
-      <div className="status-banner">
-        <p className="text-sm text-muted">
-          No projects yet. Use <span className="font-medium text-foreground">+ New Project</span> to
-          create your first workspace.
-        </p>
-      </div>
-    );
+    return <ProjectDashboardEmptyState onCreateProject={onCreateProject} />;
   }
 
   return (
@@ -32,7 +28,7 @@ export function ProjectGrid({
         <ProjectCard
           key={project.id}
           project={project}
-          snapshot={snapshots[project.id] ?? emptyProjectSnapshot()}
+          snapshot={getSnapshot(project)}
           selected={project.id === activeProjectId}
           onSelect={onSelectProject}
         />

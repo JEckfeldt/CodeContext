@@ -17,13 +17,13 @@ Handoff document for continuing development. **Scope and phased goals** are defi
 
 ## Summary
 
-CodeContext is a **multi-user AI workspace** for project content. Users **register and log in**, **create projects they own**, **import sources** (Git URL, ZIP, or individual files), then **Search** and **Explain** over all indexed content in that project.
+CodeContext is a **multi-user AI workspace** organized around **projects**. Users **register and log in**, **create and manage projects they own**, **select a project** from a responsive **project card grid**, **import multiple source types** (Git URL, ZIP, or individual files) into that project, then **Search** and **Explain** over all indexed content in the **selected project**.
 
-Phases **1–4** remain **complete**. Ingestion is **source-agnostic** via `app/ingestion/` (Importer → `ExtractedDocument` → shared chunking, optional embeddings, search, RAG). Successful imports are recorded as **`project_sources`** rows (Git, ZIP, or file batch).
+The UI is **project-centric** — a dashboard with clickable project cards and a **Selected Project** workspace — rather than a single upload-first page. Phases **1–4** remain **complete**. Ingestion is **source-agnostic** via `app/ingestion/` (Importer → `ExtractedDocument` → shared chunking, optional embeddings, search, RAG). Successful imports are recorded as **`project_sources`** rows (Git, ZIP, or file batch).
 
-The frontend provides **`/register`**, **`/login`**, JWT session storage, **project create/select**, source import tabs, and a tabbed **Search / Explain** workspace. Backend tests: **82 passed, 1 skipped** (default). Frontend: **`npm run build`** verified.
+The frontend provides **`/register`**, **`/login`**, JWT session storage, a **project dashboard** (create/select via cards), **live project statistics** on list/get project responses, **Import Sources** tabs, **Project Overview** stats, and a tabbed **Search / Explain** workspace. Backend tests: **87 passed, 1 skipped** (default). Frontend: **`npm run build`** verified.
 
-**Phase 5** (advanced developer tools) and several UX/platform items (streaming, re-index UI, etc.) are **not** implemented.
+**Phase 5** (advanced developer tools) and several UX/platform items (streaming, re-index UI, source-type badges from API, etc.) are **not** implemented.
 
 ---
 
@@ -44,7 +44,7 @@ The frontend provides **`/register`**, **`/login`**, JWT session storage, **proj
 
 | Layer | Stack |
 |--------|--------|
-| Frontend | Next.js — auth pages, project picker, ZIP / Git / file import, **Search** / **Explain** |
+| Frontend | Next.js — auth pages, **project dashboard**, responsive **project card grid**, **Selected Project** workspace (overview + import + file browser), **Search / Explain** tabs |
 | Backend | FastAPI, JWT auth, SQLAlchemy async, Alembic, ingestion pipeline, retrieval, LLM + RAG |
 | Database | PostgreSQL 16 + **pgvector** + **HNSW**; `users`, `projects.user_id`, `project_sources` |
 
@@ -81,13 +81,17 @@ Search / Explain (JWT + ownership checks on every project route)
 ```text
 Register or log in (/register, /login) → JWT stored client-side
         ↓
-Create or select a project (owned by current user)
+Project dashboard (header, + New Project, project card grid)
         ↓
-Import sources: Upload ZIP | Repository URL | Individual Files
+Create or select a project (clickable project cards)
+        ↓
+Selected Project — Overview (stat cards for files, chunks, sources, etc.)
+        ↓
+Import Sources — Git Repository | ZIP Upload | Individual Files
         ↓
 Browse discovered files in that project
         ↓
-Project workspace — Search | Explain (tabbed)
+Search | Explain (tabbed workspace)
         ↓
 Results (ranked hits or RAG answer + citations)
 ```
@@ -120,7 +124,7 @@ Requires Docker (or equivalent), PostgreSQL + pgvector, **`JWT_SECRET_KEY`**, ba
 
 **Projects & sources**
 
-- **List / create / get** owned projects (`GET/POST /projects`, `GET /projects/{id}`)
+- **List / create / get** owned projects (`GET/POST /projects`, `GET /projects/{id}`) with embedded **`stats`** (file, chunk, source, embedding counts; `last_indexed_at`)
 - **`project_sources`** — records each Git, ZIP, or file import (`source_type`, `source_name`, optional `source_url`)
 - One project can accumulate **multiple imports** (e.g. Git repo + PDF + Markdown); file import **merges** by path; ZIP/Git **replace** project files for that ingest
 
@@ -137,9 +141,16 @@ Requires Docker (or equivalent), PostgreSQL + pgvector, **`JWT_SECRET_KEY`**, ba
 - Chunking from `ExtractedDocument`; optional embeddings (`EMBEDDING_ENABLED`, default off)
 - pgvector + HNSW; Search and Explain UIs
 
+**Frontend workspace**
+
+- **Responsive project dashboard** — header, **+ New Project**, project card grid
+- **Clickable project cards** — name, source badges or source count, live file/chunk/source stats, last updated, selected state
+- **Persistent Selected Project workspace** — overview with **live stats** from API, import, file browser, Search / Explain on one page
+- **Cleaner project-first workflow** — select project before import and assistant actions
+
 **Quality & tooling**
 
-- Backend tests (auth, authorization, ingestion, Git/file importers); **82 passed, 1 skipped**
+- Backend tests (auth, authorization, project stats, ingestion, Git/file importers); **87 passed, 1 skipped**
 - Pytest ignores repo `.env` for deterministic feature flags
 - Frontend production build passes
 - Migration **`0005_users_and_project_ownership`**
@@ -153,9 +164,9 @@ Requires Docker (or equivalent), PostgreSQL + pgvector, **`JWT_SECRET_KEY`**, ba
 | POST | `/api/v1/auth/register` | Create account (returns JWT) |
 | POST | `/api/v1/auth/login` | Log in (returns JWT) |
 | GET | `/api/v1/auth/me` | Current user (Bearer token) |
-| GET | `/api/v1/projects` | List current user's projects |
-| POST | `/api/v1/projects` | Create project (owned by user) |
-| GET | `/api/v1/projects/{id}` | Get owned project |
+| GET | `/api/v1/projects` | List current user's projects (includes `stats`) |
+| POST | `/api/v1/projects` | Create project (owned by user; includes `stats`) |
+| GET | `/api/v1/projects/{id}` | Get owned project (includes `stats`) |
 | POST | `/api/v1/projects/{id}/upload` | Upload ZIP |
 | POST | `/api/v1/projects/{id}/import` | Import Git URL |
 | POST | `/api/v1/projects/{id}/files/import` | Upload individual files (multipart) |
@@ -167,6 +178,76 @@ Requires Docker (or equivalent), PostgreSQL + pgvector, **`JWT_SECRET_KEY`**, ba
 All **`/projects/*`** routes require **`Authorization: Bearer <token>`**.
 
 Search/ask still require **PostgreSQL + pgvector**, **`EMBEDDING_ENABLED`**, and for ask **`LLM_ENABLED`** + **`OPENAI_API_KEY`**. See [README.md](../README.md) and `.env.example`.
+
+---
+
+## Current UI
+
+The main app (`/`) is a **project-centric workspace** styled as a modern developer tool (similar in spirit to GitHub, Linear, or Vercel dashboards).
+
+**Project dashboard**
+
+- App header with branding, signed-in user, and log out
+- **CodeContext** title and tagline
+- **+ New Project** inline create form
+- Responsive **project card grid** — click a card to set the active project (no routing change)
+
+**Project cards**
+
+- Project name, source-type badges (from session imports and active-project file types when loaded), live **file/chunk/source** counts from API, relative **updated** time, clear **selected** state
+
+**Selected Project workspace**
+
+- **Overview** — stat grid for Files, Chunks, Sources, Last indexed, Embeddings (live counts from **`stats`** on project list/get responses)
+- **Import Sources** — tabbed Git Repository, ZIP Upload, Individual Files (unchanged API behavior)
+- **Discovered files** — file browser after content is indexed
+- **Search / Explain** — tabbed assistant workspace below imports
+
+All assistant and import actions operate on the **currently selected project**.
+
+---
+
+## Planned UI improvements
+
+Features **not** implemented yet. See also [Recommended next priorities](#recommended-next-priorities).
+
+### Project overview
+
+- Project health indicators
+- Dedicated embedding-enabled flag (stats report embedding **count**, not global config)
+
+### Project cards
+
+- Recent activity
+- Favorite / star project
+- Search / filter projects
+- Re-index status badges
+
+### Search
+
+- Highlight matched query terms
+- Better result previews
+- Click-to-open source file
+
+### Explain
+
+- Streaming AI responses
+- Copy answer button
+- Conversation history
+- Better citation display with line numbers
+
+### Import
+
+- Progress indicators
+- Background indexing
+- Re-index existing sources
+
+### Future
+
+- Repository graph
+- Dependency visualization
+- Shared projects
+- Team workspaces
 
 ---
 
@@ -193,7 +274,8 @@ Search/ask still require **PostgreSQL + pgvector**, **`EMBEDDING_ENABLED`**, and
 
 - **`users`** table; **`projects.user_id`**; **`project_sources`**
 - JWT auth routes; protected project API; ownership in `project_service`
-- Frontend **`/login`**, **`/register`**, token storage, project-first workflow
+- Frontend **`/login`**, **`/register`**, token storage, **project dashboard** (card grid, Selected Project workspace)
+- **Project stats** on list/get project API (`project_stats_service`); dashboard consumes live metrics
 - Migration **`0005_users_and_project_ownership`**
 - **bcrypt pin** (`bcrypt<4.1`) for passlib compatibility
 
@@ -201,9 +283,10 @@ Search/ask still require **PostgreSQL + pgvector**, **`EMBEDDING_ENABLED`**, and
 |------|------|
 | Auth | `backend/app/api/routes/auth.py`, `backend/app/core/security.py`, `backend/app/services/auth_service.py` |
 | Ownership | `backend/app/services/project_service.py` |
+| Stats | `backend/app/services/project_stats_service.py` |
 | Sources | `backend/app/models/project_source.py`, `backend/app/services/project_source_service.py` |
 | Ingestion | `backend/app/ingestion/` |
-| Shell | `frontend/components/code-context-app.tsx`, `frontend/components/auth/auth-form.tsx` |
+| Shell | `frontend/components/code-context-app.tsx`, `frontend/components/projects/`, `frontend/components/auth/auth-form.tsx` |
 
 ---
 
@@ -222,7 +305,9 @@ Search/ask still require **PostgreSQL + pgvector**, **`EMBEDDING_ENABLED`**, and
 - **PDF** — text extraction only (no OCR); scanned PDFs may fail
 - **Re-index** without re-import not supported
 - **Synchronous** ingest (no background workers)
-- No UI for **embedding coverage** / index health
+- No dedicated **project health** UI; stats expose counts but not index coverage diagnostics
+- Card **source-type badges** are inferred client-side (session imports + loaded file types), not from a sources list API
+- **`stats`** does not expose whether **`EMBEDDING_ENABLED`** is on globally — only **`embedding_count`**
 
 **Assistant UX**
 
@@ -281,7 +366,7 @@ Legacy DBs from `init_db()` only: stamp through current head per existing docs, 
 ### Tests
 
 ```bash
-cd backend && python -m pytest -q    # 82 passed, 1 skipped (default)
+cd backend && python -m pytest -q    # 87 passed, 1 skipped (default)
 cd frontend && npm run build
 ```
 
@@ -289,4 +374,4 @@ Postgres integration: `CODECONTEXT_INTEGRATION_DATABASE_URL=... pytest -m integr
 
 ---
 
-*When Phase 5 or major platform work ships, update **Phase overview**, **Completed work**, **Current MVP capabilities**, and **Recommended next priorities**.*
+*When Phase 5 or major platform work ships, update **Phase overview**, **Completed work**, **Current MVP capabilities**, **Current UI**, and **Recommended next priorities**.*

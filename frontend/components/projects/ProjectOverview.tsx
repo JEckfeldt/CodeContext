@@ -8,54 +8,44 @@ type ProjectOverviewProps = {
   snapshot: ProjectSnapshot;
 };
 
-function formatOptionalCount(value: number | null, singular: string, plural: string): string {
-  if (value === null) return "—";
+function formatCount(value: number, singular: string, plural: string): string {
   return `${value.toLocaleString()} ${value === 1 ? singular : plural}`;
 }
 
-function formatEmbeddingsStatus(enabled: boolean | null): { value: string; placeholder: boolean } {
-  if (enabled === null) {
-    return { value: "Unknown", placeholder: true };
-  }
-  return { value: enabled ? "Enabled" : "Disabled", placeholder: false };
+function formatLastIndexed(lastIndexedAt: string | null): string {
+  if (!lastIndexedAt) return "Not indexed yet";
+  return formatRelativeTime(lastIndexedAt);
+}
+
+function formatEmbeddings(snapshot: ProjectSnapshot): string {
+  if (snapshot.chunkCount === 0) return "No chunks indexed";
+  if (snapshot.embeddingCount === 0) return "0 embeddings";
+  return formatCount(snapshot.embeddingCount, "embedding", "embeddings");
 }
 
 export function ProjectOverview({ project, snapshot }: ProjectOverviewProps) {
-  const lastIndexed = snapshot.lastIndexedAt ?? project.updated_at;
-  const embeddings = formatEmbeddingsStatus(snapshot.embeddingsEnabled);
-
   const stats = [
     {
       label: "Files",
-      value: formatOptionalCount(snapshot.fileCount, "file", "files"),
+      value: formatCount(snapshot.fileCount, "file", "files"),
     },
     {
       label: "Chunks",
-      value: formatOptionalCount(snapshot.chunkCount, "chunk", "chunks"),
-      hint: snapshot.chunkCount === null ? "Available after import or stats API" : undefined,
-      placeholder: snapshot.chunkCount === null,
+      value: formatCount(snapshot.chunkCount, "chunk", "chunks"),
     },
     {
       label: "Sources",
-      value:
-        snapshot.sourceCount !== null
-          ? String(snapshot.sourceCount)
-          : snapshot.sourceBadges.length > 0
-            ? String(snapshot.sourceBadges.length)
-            : "—",
-      hint: snapshot.sourceCount === null ? "TODO: project_sources API" : undefined,
-      placeholder: snapshot.sourceCount === null && snapshot.sourceBadges.length === 0,
+      value: formatCount(snapshot.sourceCount, "source", "sources"),
     },
     {
       label: "Last indexed",
-      value: snapshot.fileCount > 0 ? formatRelativeTime(lastIndexed) : "Not indexed",
-      placeholder: snapshot.fileCount === 0,
+      value: formatLastIndexed(snapshot.lastIndexedAt),
+      placeholder: !snapshot.lastIndexedAt,
     },
     {
       label: "Embeddings",
-      value: embeddings.value,
-      hint: embeddings.placeholder ? "TODO: backend project settings" : undefined,
-      placeholder: embeddings.placeholder,
+      value: formatEmbeddings(snapshot),
+      placeholder: snapshot.embeddingCount === 0 && snapshot.chunkCount > 0,
     },
   ];
 
@@ -63,9 +53,13 @@ export function ProjectOverview({ project, snapshot }: ProjectOverviewProps) {
     <div className="space-y-4">
       <div>
         <p className="section-label">Overview</p>
-        <p className="section-title mt-1">Project metrics</p>
+        <p className="section-title mt-1">{project.name}</p>
         {snapshot.sourceBadges.length > 0 ? (
           <p className="mt-1 text-sm text-muted">{snapshot.sourceBadges.join(" · ")}</p>
+        ) : snapshot.sourceCount > 0 ? (
+          <p className="mt-1 text-sm text-muted">
+            {formatCount(snapshot.sourceCount, "source", "sources")} indexed
+          </p>
         ) : null}
       </div>
       <ProjectStats items={stats} />
