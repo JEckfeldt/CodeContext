@@ -244,6 +244,9 @@ generated/
 tmp/
 temp/
 
+# Personal study notes (local only)
+docs/ML_AI_CodeContext_Study_Checklist.md
+
 # Model downloads and local weights (if cached locally)
 models/
 *.bin
