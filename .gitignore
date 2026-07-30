@@ -246,6 +246,7 @@ temp/
 
 # Personal study notes (local only)
 docs/ML_AI_CodeContext_Study_Checklist.md
+docs/AGENT_DESIGN_PLAN.md
 
 # Model downloads and local weights (if cached locally)
 models/
