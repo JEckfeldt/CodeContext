@@ -1,6 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
+from app.agent.artifact_parser import extract_json_payload, parse_artifact_from_response
 from app.agent.schemas import AgentRunResult, ToolCallResult, ToolResult
 from app.agent.structured_output import (
     ArchitectureReport,
@@ -134,3 +135,24 @@ def test_agent_run_result_backward_compatible_without_artifact() -> None:
     assert result.answer == "Done."
     assert result.artifact_type is None
     assert result.artifact is None
+
+
+def test_extract_json_payload_supports_raw_json() -> None:
+    payload = extract_json_payload('{"title": "A", "summary": "B"}')
+    assert payload == {"title": "A", "summary": "B"}
+
+
+def test_extract_json_payload_supports_fenced_json() -> None:
+    payload = extract_json_payload(
+        'Here is the report:\n```json\n{"title": "A", "summary": "B"}\n```'
+    )
+    assert payload == {"title": "A", "summary": "B"}
+
+
+def test_parse_artifact_from_response_fails_gracefully_for_markdown() -> None:
+    parsed = parse_artifact_from_response(
+        "## Summary\n\nPlain markdown only.",
+        "architecture_report",
+    )
+    assert parsed.artifact_type is None
+    assert parsed.artifact is None

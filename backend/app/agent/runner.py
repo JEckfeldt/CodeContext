@@ -8,11 +8,13 @@ from typing import Any
 
 from app.agent.context import AgentRunContext
 from app.agent.exceptions import AgentError, AgentStepLimitError
+from app.agent.artifact_parser import parse_artifact_from_response
 from app.agent.schemas import AgentRunResult, ToolCallResult, ToolResult
 from app.agent.tools.registry import ToolRegistry
 from app.llm.base import ChatProvider
 from app.llm.types import ChatCompletionResult, ToolCall
 from app.prompts.agent_system import build_agent_system_prompt
+from app.prompts.agent_task_templates import TaskTemplate, get_task_template
 
 
 def _build_initial_messages(
@@ -94,6 +96,10 @@ class AgentRunner:
         if not trimmed_goal:
             raise AgentError("Agent run goal must not be empty.")
 
+        resolved_template: TaskTemplate | None = None
+        if task_template is not None:
+            resolved_template = get_task_template(task_template)
+
         messages = _build_initial_messages(trimmed_goal, task_template)
         tool_trace: list[ToolCallResult] = []
         steps_taken = 0
@@ -117,16 +123,44 @@ class AgentRunner:
                 continue
 
             if completion.content is not None:
-                return AgentRunResult(
+                return self._build_run_result(
                     answer=completion.content,
                     steps_taken=steps_taken,
-                    tool_calls=tool_trace,
+                    tool_trace=tool_trace,
+                    task_template=resolved_template,
                 )
 
             raise AgentError("LLM returned an empty completion with no tool calls.")
 
         raise AgentStepLimitError(
             f"Agent run exceeded the maximum of {self._max_steps} step(s)."
+        )
+
+    def _build_run_result(
+        self,
+        *,
+        answer: str,
+        steps_taken: int,
+        tool_trace: list[ToolCallResult],
+        task_template: TaskTemplate | None,
+    ) -> AgentRunResult:
+        artifact_type: str | None = None
+        artifact = None
+
+        if task_template is not None:
+            parsed = parse_artifact_from_response(
+                answer,
+                task_template.output_format,
+            )
+            artifact_type = parsed.artifact_type
+            artifact = parsed.artifact
+
+        return AgentRunResult(
+            answer=answer,
+            steps_taken=steps_taken,
+            tool_calls=tool_trace,
+            artifact_type=artifact_type,
+            artifact=artifact,
         )
 
     async def _execute_tool_call(
