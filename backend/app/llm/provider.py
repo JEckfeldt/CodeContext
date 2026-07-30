@@ -14,3 +14,17 @@ def get_chat_provider() -> ChatProvider | None:
         max_tokens=settings.llm_max_tokens,
         timeout_seconds=settings.llm_timeout_seconds,
     )
+
+
+def get_agent_chat_provider() -> ChatProvider | None:
+    """Return a chat provider configured for agent runs."""
+    if not settings.llm_enabled:
+        return None
+    if not settings.openai_api_key:
+        return None
+    return OpenAIChatProvider(
+        api_key=settings.openai_api_key,
+        model=settings.agent_model or settings.llm_model,
+        max_tokens=settings.llm_max_tokens,
+        timeout_seconds=settings.llm_timeout_seconds,
+    )
