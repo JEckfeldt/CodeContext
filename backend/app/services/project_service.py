@@ -1,9 +1,11 @@
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.indexing.discovery import DiscoveredFile
 from app.models import File, Project
 from app.schemas import ProjectCreate
@@ -11,6 +13,25 @@ from app.schemas import ProjectCreate
 
 class ProjectNotFoundError(Exception):
     pass
+
+
+class ProjectFileNotFoundError(Exception):
+    pass
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectFileContent:
+    """File metadata and bounded text content for read-only access."""
+
+    id: uuid.UUID
+    project_id: uuid.UUID
+    path: str
+    filename: str
+    extension: str | None
+    language: str | None
+    size: int
+    content: str
+    truncated: bool
 
 
 async def create_project(
@@ -69,6 +90,58 @@ async def list_project_files(
         .order_by(File.path.asc())
     )
     return list(result.all())
+
+
+async def get_project_file_content(
+    session: AsyncSession,
+    project_id: uuid.UUID,
+    path: str,
+    *,
+    user_id: uuid.UUID,
+    max_content_chars: int | None = None,
+) -> ProjectFileContent:
+    """Return bounded file content after verifying project ownership."""
+    await get_project_for_user(session, project_id, user_id)
+
+    normalized_path = path.strip().lstrip("/")
+    if not normalized_path:
+        raise ProjectFileNotFoundError(
+            f"File {path!r} was not found in project {project_id}."
+        )
+
+    file = await session.scalar(
+        select(File).where(
+            File.project_id == project_id,
+            File.path == normalized_path,
+        )
+    )
+    if file is None:
+        raise ProjectFileNotFoundError(
+            f"File {normalized_path!r} was not found in project {project_id}."
+        )
+
+    char_limit = (
+        max_content_chars
+        if max_content_chars is not None
+        else settings.max_ingest_file_bytes
+    )
+    content = file.content
+    truncated = False
+    if len(content) > char_limit:
+        content = f"{content[:char_limit]}\n… [truncated]"
+        truncated = True
+
+    return ProjectFileContent(
+        id=file.id,
+        project_id=file.project_id,
+        path=file.path,
+        filename=file.filename,
+        extension=file.extension,
+        language=file.language,
+        size=file.size,
+        content=content,
+        truncated=truncated,
+    )
 
 
 async def replace_project_files(
