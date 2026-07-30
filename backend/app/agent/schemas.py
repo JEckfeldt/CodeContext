@@ -50,3 +50,12 @@ class ToolCallResult:
     arguments: dict[str, Any]
     result: ToolResult
     duration_ms: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class AgentRunResult:
+    """Outcome of a completed agent run."""
+
+    answer: str
+    steps_taken: int
+    tool_calls: list[ToolCallResult]
