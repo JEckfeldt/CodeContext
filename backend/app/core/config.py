@@ -1,7 +1,9 @@
 import sys
 from pathlib import Path
 
-from pydantic import field_validator
+from typing import Self
+
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -46,6 +48,9 @@ class Settings(BaseSettings):
     llm_model: str = "gpt-4o-mini"
     llm_max_tokens: int = 2048
     llm_timeout_seconds: float = 120.0
+    agent_enabled: bool = False
+    agent_max_steps: int = 10
+    agent_model: str | None = None
     jwt_secret_key: str = "change-me-in-production"
     jwt_algorithm: str = "HS256"
     jwt_access_token_expire_minutes: int = 60 * 24 * 7
@@ -56,6 +61,12 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             return [origin.strip() for origin in value.split(",") if origin.strip()]
         return value
+
+    @model_validator(mode="after")
+    def default_agent_model_to_llm(self) -> Self:
+        if self.agent_model is None:
+            self.agent_model = self.llm_model
+        return self
 
 
 settings = Settings()
