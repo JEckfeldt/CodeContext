@@ -11,6 +11,14 @@ export function formatAssistantErrorMessage(rawMessage: string): string {
     return "AI explanations are turned off on the server. Ask your administrator to enable the AI service, then try again.";
   }
 
+  if (message.includes("AGENT_ENABLED") || message.includes("Agent is not enabled")) {
+    return "The analysis agent is turned off on the server. Ask your administrator to enable AGENT_ENABLED, then try again.";
+  }
+
+  if (message.includes("Agent LLM provider is not configured")) {
+    return "The analysis agent needs the AI service enabled. Set LLM_ENABLED=true and OPENAI_API_KEY on the server, then try again.";
+  }
+
   if (
     message.includes("EMBEDDING_ENABLED") ||
     message.includes("Embedding provider is not configured")

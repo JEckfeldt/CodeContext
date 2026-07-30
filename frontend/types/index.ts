@@ -81,3 +81,43 @@ export type ProjectAskResponse = {
   answer: string;
   citations: SourceCitation[];
 };
+
+export type AgentRunRequest = {
+  goal: string;
+  task_template?: string | null;
+};
+
+export type ToolCallTrace = {
+  tool_name: string;
+  arguments: Record<string, unknown>;
+  success: boolean;
+  summary: string;
+  duration_ms: number | null;
+};
+
+export type ArchitectureReportArtifact = {
+  title: string;
+  summary: string;
+  components: Array<{
+    name: string;
+    description: string;
+    file_paths?: string[];
+  }>;
+  data_flow?: string | null;
+  recommendations?: string[];
+  citations?: Array<{
+    file_path: string;
+    start_line: number;
+    end_line: number;
+    symbol_name?: string | null;
+  }>;
+};
+
+export type AgentRunResponse = {
+  project_id: string;
+  answer: string;
+  steps_taken: number;
+  tool_calls: ToolCallTrace[];
+  artifact_type?: "architecture_report" | "findings_report" | "roadmap_report" | null;
+  artifact?: ArchitectureReportArtifact | null;
+};

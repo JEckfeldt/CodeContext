@@ -2,6 +2,8 @@ import { getApiBaseUrl } from "@/lib/config";
 import { authHeaders } from "@/lib/auth-token";
 import type {
   AuthResponse,
+  AgentRunRequest,
+  AgentRunResponse,
   FileRecord,
   Project,
   ProjectAskRequest,
@@ -164,4 +166,16 @@ export async function askProject(
     body: JSON.stringify(request),
   });
   return parseJson<ProjectAskResponse>(response);
+}
+
+export async function runAgent(
+  projectId: string,
+  request: AgentRunRequest,
+): Promise<AgentRunResponse> {
+  const response = await fetch(`${getApiBaseUrl()}/projects/${projectId}/agent/runs`, {
+    method: "POST",
+    headers: jsonHeaders(),
+    body: JSON.stringify(request),
+  });
+  return parseJson<AgentRunResponse>(response);
 }

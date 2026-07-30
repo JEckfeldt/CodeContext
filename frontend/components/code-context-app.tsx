@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { RepositoryAskSection } from "@/components/assistant/repository-ask-section";
+import { AgentSection } from "@/components/agent/AgentSection";
 import { ProjectGrid } from "@/components/projects/ProjectGrid";
 import { ProjectOverview } from "@/components/projects/ProjectOverview";
 import {
@@ -30,7 +31,7 @@ import {
 } from "@/lib/project-meta";
 import type { FileRecord, Project, User } from "@/types";
 
-type WorkspaceMode = "search" | "ask";
+type WorkspaceMode = "search" | "ask" | "agent";
 
 function createImportTypeMap(): Record<string, Set<ImportSourceType>> {
   return {};
@@ -52,6 +53,7 @@ export function CodeContextApp() {
   const [creatingProject, setCreatingProject] = useState(false);
   const [searchSession, setSearchSession] = useState(0);
   const [askSession, setAskSession] = useState(0);
+  const [agentSession, setAgentSession] = useState(0);
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("search");
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -141,6 +143,7 @@ export function CodeContextApp() {
     });
     setSearchSession((value) => value + 1);
     setAskSession((value) => value + 1);
+    setAgentSession((value) => value + 1);
   }
 
   async function handleCreateProject() {
@@ -274,7 +277,7 @@ export function CodeContextApp() {
             <p className="section-label">Projects</p>
             <p className="section-title mt-1">Your workspaces</p>
             <p className="mt-1 max-w-xl text-sm text-muted">
-              Select a project to import sources, browse files, and run Search or Explain.
+              Select a project to import sources, browse files, and run Search, Explain, or Agent.
             </p>
             <div className="mt-5">
               <ProjectGrid
@@ -362,9 +365,9 @@ export function CodeContextApp() {
             <p id="workspace-heading" className="section-label">
               Project workspace
             </p>
-            <p className="section-title mt-1">Search or explain</p>
+            <p className="section-title mt-1">Search, explain, or analyze</p>
             <div
-              className="mt-4 flex w-full max-w-md rounded-lg border border-border bg-secondary-muted/70 p-1"
+              className="mt-4 flex w-full max-w-xl rounded-lg border border-border bg-secondary-muted/70 p-1"
               role="tablist"
               aria-label="Workspace mode"
             >
@@ -400,6 +403,22 @@ export function CodeContextApp() {
               >
                 🤖 Explain
               </button>
+              <button
+                type="button"
+                role="tab"
+                id="workspace-tab-agent"
+                aria-selected={workspaceMode === "agent"}
+                aria-controls="workspace-panel-agent"
+                className={cn(
+                  "flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors sm:px-4",
+                  workspaceMode === "agent"
+                    ? "bg-surface text-primary shadow-sm"
+                    : "text-muted hover:text-foreground",
+                )}
+                onClick={() => setWorkspaceMode("agent")}
+              >
+                🧠 Agent
+              </button>
             </div>
           </div>
 
@@ -433,6 +452,23 @@ export function CodeContextApp() {
             >
               <RepositoryAskSection
                 key={`ask-${askSession}`}
+                projectId={activeProject?.id ?? ""}
+                disabled={!projectIndexed}
+              />
+            </div>
+
+            <div
+              id="workspace-panel-agent"
+              role="tabpanel"
+              aria-labelledby="workspace-tab-agent"
+              hidden={workspaceMode !== "agent"}
+              className={cn(
+                "flex min-h-[26rem] flex-1 flex-col",
+                workspaceMode !== "agent" && "hidden",
+              )}
+            >
+              <AgentSection
+                key={`agent-${agentSession}`}
                 projectId={activeProject?.id ?? ""}
                 disabled={!projectIndexed}
               />
