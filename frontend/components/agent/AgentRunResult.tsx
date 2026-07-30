@@ -1,5 +1,6 @@
 "use client";
 
+import { DownloadMarkdownButton } from "@/components/agent/DownloadMarkdownButton";
 import { MarkdownRenderer } from "@/components/agent/MarkdownRenderer";
 import { ToolTrace } from "@/components/agent/ToolTrace";
 import { Badge } from "@/components/ui/badge";
@@ -20,6 +21,19 @@ function isArchitectureReport(
     typeof artifact.summary === "string" &&
     Array.isArray(artifact.components)
   );
+}
+
+function getDownloadFilename(result: AgentRunResponse): string {
+  switch (result.artifact_type) {
+    case "architecture_report":
+      return "architecture-report.md";
+    case "findings_report":
+      return "findings-report.md";
+    case "roadmap_report":
+      return "roadmap-report.md";
+    default:
+      return "agent-report.md";
+  }
 }
 
 function ArchitectureReportView({ artifact }: { artifact: ArchitectureReportArtifact }) {
@@ -53,6 +67,9 @@ export function AgentRunResult({ result, submittedGoal }: AgentRunResultProps) {
       ? result.artifact
       : null;
 
+  const markdownContent = result.answer?.trim() ?? "";
+  const hasMarkdown = markdownContent.length > 0;
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
@@ -67,8 +84,20 @@ export function AgentRunResult({ result, submittedGoal }: AgentRunResultProps) {
       ) : null}
 
       <div className="rounded-md border border-border-subtle bg-surface px-4 py-4">
-        <p className="mb-3 text-sm font-medium text-foreground">Answer</p>
-        <MarkdownRenderer markdown={result.answer} />
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm font-medium text-foreground">Answer</p>
+          {hasMarkdown ? (
+            <DownloadMarkdownButton
+              markdown={markdownContent}
+              filename={getDownloadFilename(result)}
+            />
+          ) : null}
+        </div>
+        {hasMarkdown ? (
+          <MarkdownRenderer markdown={markdownContent} />
+        ) : (
+          <p className="text-sm text-muted">No answer content was returned.</p>
+        )}
       </div>
 
       <ToolTrace toolCalls={result.tool_calls} />
