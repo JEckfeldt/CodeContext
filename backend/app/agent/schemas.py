@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
+
+from pydantic import BaseModel
 
 from app.agent.context import AgentRunContext
 
@@ -59,3 +61,5 @@ class AgentRunResult:
     answer: str
     steps_taken: int
     tool_calls: list[ToolCallResult]
+    artifact_type: str | None = None
+    artifact: BaseModel | dict[str, Any] | None = field(default=None)
