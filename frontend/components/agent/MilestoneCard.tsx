@@ -1,6 +1,9 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
+
 import { CodeBlock } from "@/components/content/code-block";
+import { Button } from "@/components/ui/button";
 import type { ImplementationMilestone } from "@/types";
 
 type MilestoneCardProps = {
@@ -40,6 +43,38 @@ function FileList({ label, files }: { label: string; files: string[] }) {
 }
 
 export function MilestoneCard({ milestone, index }: MilestoneCardProps) {
+  const [copied, setCopied] = useState(false);
+  const resetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (resetTimeoutRef.current !== null) {
+        clearTimeout(resetTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  async function handleCopyCursorPrompt() {
+    const prompt = milestone.cursor_prompt;
+    if (!prompt.trim()) return;
+
+    try {
+      await navigator.clipboard.writeText(prompt);
+      setCopied(true);
+
+      if (resetTimeoutRef.current !== null) {
+        clearTimeout(resetTimeoutRef.current);
+      }
+
+      resetTimeoutRef.current = setTimeout(() => {
+        setCopied(false);
+        resetTimeoutRef.current = null;
+      }, 2000);
+    } catch {
+      setCopied(false);
+    }
+  }
+
   return (
     <li className="rounded-md border border-border-subtle bg-secondary-muted/30 px-4 py-4">
       <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -83,9 +118,22 @@ export function MilestoneCard({ milestone, index }: MilestoneCardProps) {
         </div>
 
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Cursor prompt
-          </p>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Cursor prompt
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="shrink-0"
+              disabled={!milestone.cursor_prompt.trim()}
+              onClick={handleCopyCursorPrompt}
+              aria-label="Copy Cursor Prompt"
+            >
+              {copied ? "Copied!" : "Copy Cursor Prompt"}
+            </Button>
+          </div>
           <CodeBlock code={milestone.cursor_prompt} className="my-2" />
         </div>
       </div>
