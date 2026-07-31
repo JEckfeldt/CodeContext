@@ -17,8 +17,8 @@ function isArchitectureReport(
   return (
     artifact !== null &&
     artifact !== undefined &&
-    typeof artifact.title === "string" &&
-    typeof artifact.summary === "string" &&
+    typeof artifact === "object" &&
+    "components" in artifact &&
     Array.isArray(artifact.components)
   );
 }

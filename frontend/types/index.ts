@@ -95,29 +95,95 @@ export type ToolCallTrace = {
   duration_ms: number | null;
 };
 
+export type AgentArtifactType =
+  | "architecture_report"
+  | "findings_report"
+  | "roadmap_report"
+  | "implementation_plan";
+
+export type ArtifactCitation = {
+  file_path: string;
+  start_line: number;
+  end_line: number;
+  symbol_name?: string | null;
+};
+
+export type ArchitectureComponent = {
+  name: string;
+  description: string;
+  file_paths?: string[];
+};
+
 export type ArchitectureReportArtifact = {
   title: string;
   summary: string;
-  components: Array<{
-    name: string;
-    description: string;
-    file_paths?: string[];
-  }>;
+  components: ArchitectureComponent[];
   data_flow?: string | null;
   recommendations?: string[];
-  citations?: Array<{
-    file_path: string;
-    start_line: number;
-    end_line: number;
-    symbol_name?: string | null;
-  }>;
+  citations?: ArtifactCitation[];
 };
 
-export type AgentRunResponse = {
+export type ImplementationMilestone = {
+  title: string;
+  objective: string;
+  files_to_modify: string[];
+  files_to_create: string[];
+  implementation_details: string;
+  testing_requirements: string[];
+  cursor_prompt: string;
+};
+
+export type AffectedComponent = {
+  name: string;
+  description: string;
+  file_paths: string[];
+};
+
+export type ImplementationPlanArtifact = {
+  title: string;
+  goal: string;
+  summary: string;
+  existing_system_analysis: string;
+  relevant_files: string[];
+  affected_components: AffectedComponent[];
+  milestones: ImplementationMilestone[];
+  risks: string[];
+  citations: ArtifactCitation[];
+};
+
+export type AgentStructuredArtifact =
+  | ArchitectureReportArtifact
+  | ImplementationPlanArtifact;
+
+type AgentRunResponseCore = {
   project_id: string;
   answer: string;
   steps_taken: number;
   tool_calls: ToolCallTrace[];
-  artifact_type?: "architecture_report" | "findings_report" | "roadmap_report" | null;
-  artifact?: ArchitectureReportArtifact | null;
 };
+
+type AgentRunResponseWithoutArtifact = AgentRunResponseCore & {
+  artifact_type?: null;
+  artifact?: null;
+};
+
+type AgentRunResponseWithArchitectureArtifact = AgentRunResponseCore & {
+  artifact_type: "architecture_report";
+  artifact: ArchitectureReportArtifact;
+};
+
+type AgentRunResponseWithImplementationPlanArtifact = AgentRunResponseCore & {
+  artifact_type: "implementation_plan";
+  artifact: ImplementationPlanArtifact;
+};
+
+type AgentRunResponseWithOtherArtifact = AgentRunResponseCore & {
+  artifact_type: "findings_report" | "roadmap_report";
+  artifact: Record<string, unknown> | null;
+};
+
+export type AgentRunResponse =
+  | AgentRunResponseWithoutArtifact
+  | AgentRunResponseWithArchitectureArtifact
+  | AgentRunResponseWithImplementationPlanArtifact
+  | AgentRunResponseWithOtherArtifact;
