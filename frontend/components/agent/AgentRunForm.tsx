@@ -17,6 +17,12 @@ export const AGENT_TASK_TEMPLATE_OPTIONS: AgentTaskTemplateOption[] = [
     description: "Analyze layers, modules, entry points, and data flow.",
   },
   {
+    value: "implementation_planning",
+    label: "Implementation Planning",
+    description:
+      "Analyze the repository and generate an ordered implementation plan with executable Cursor milestones.",
+  },
+  {
     value: "security_review",
     label: "Security review",
     description: "Coming soon.",
