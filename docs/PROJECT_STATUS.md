@@ -1,377 +1,190 @@
 # CodeContext Project Status
 
-Handoff document for continuing development. **Scope and phased goals** are defined in the [Roadmap](ROADMAP.md). This file describes **what is shipped**, **what works today**, **what is missing**, and **recommended next steps**.
+## Overview
+
+CodeContext is a multi-user workspace for importing, indexing, and querying software repositories. Users authenticate, create owned projects, import sources (Git, ZIP, or files), then use **Search**, **Explain**, or **Agent** over indexed project content.
+
+Local MVP runs via Docker Compose (Next.js frontend, FastAPI backend, PostgreSQL + pgvector). OpenAI powers embeddings, RAG answers, and the read-only analysis agent.
 
 ---
 
-## Development summary
+## Implemented Features
 
-| | |
-|--|--|
-| **Current phase** | Post–Phase 4 MVP with **auth & multi-user projects** (Phases 1–4 complete; Phase 5 not started) |
-| **Completed phases** | 1 Repository Ingestion · 2 Code Indexing · 3 Semantic Search · 4 AI Code Assistant · **Platform auth & project ownership** |
-| **Recommended next milestone** | **Deployment**, **re-index workflow**, and **private Git** credentials |
-| **Approximate MVP maturity** | **Multi-user local/demo MVP** — register/login, owned projects, multiple source types per project, search/explain with Docker, Postgres, pgvector, and OpenAI; not production-hardened (no hosted deploy guide, streaming, or conversation history) |
+**Platform**
 
----
-
-## Summary
-
-CodeContext is a **multi-user AI workspace** organized around **projects**. Users **register and log in**, **create and manage projects they own**, **select a project** from a responsive **project card grid**, **import multiple source types** (Git URL, ZIP, or individual files) into that project, then **Search** and **Explain** over all indexed content in the **selected project**.
-
-The UI is **project-centric** — a dashboard with clickable project cards and a **Selected Project** workspace — rather than a single upload-first page. Phases **1–4** remain **complete**. Ingestion is **source-agnostic** via `app/ingestion/` (Importer → `ExtractedDocument` → shared chunking, optional embeddings, search, RAG). Successful imports are recorded as **`project_sources`** rows (Git, ZIP, or file batch).
-
-The frontend provides **`/register`**, **`/login`**, JWT session storage, a **project dashboard** (create/select via cards), **live project statistics** on list/get project responses, **Import Sources** tabs, **Project Overview** stats, and a tabbed **Search / Explain** workspace. Backend tests: **87 passed, 1 skipped** (default). Frontend: **`npm run build`** verified.
-
-**Phase 5** (advanced developer tools) and several UX/platform items (streaming, re-index UI, source-type badges from API, etc.) are **not** implemented.
-
----
-
-## Phase overview
-
-| Phase | Roadmap goal | Status |
-|-------|----------------|--------|
-| 1 — Repository Ingestion | Ingest and browse project content | **Complete** (ZIP, Git URL, individual files; owned projects) |
-| 2 — Code Indexing | Prepare content for semantic search | **Complete** |
-| 3 — Semantic Search | Find relevant content with natural language | **Complete** |
-| 4 — AI Code Assistant | Grounded answers with citations | **Complete** |
-| Platform — Auth & ownership | Users own projects; protected API | **Complete** |
-| 5 — Advanced Developer Tools | Scale and deeper repo insights | **Not started** |
-
----
-
-## Current state
-
-| Layer | Stack |
-|--------|--------|
-| Frontend | Next.js — auth pages, **project dashboard**, responsive **project card grid**, **Selected Project** workspace (overview + import + file browser), **Search / Explain** tabs |
-| Backend | FastAPI, JWT auth, SQLAlchemy async, Alembic, ingestion pipeline, retrieval, LLM + RAG |
-| Database | PostgreSQL 16 + **pgvector** + **HNSW**; `users`, `projects.user_id`, `project_sources` |
-
-**Product data model:**
-
-```text
-User
-  └── Project (workspace)
-        ├── ProjectSource[]   (git | zip | file — audit of imports)
-        ├── File[]
-        └── CodeChunk[] → optional embeddings → Search / Explain
-```
-
-**Backend ingestion flow:**
-
-```text
-Authenticated user selects owned Project
-        ↓
-Source (Git URL | ZIP | uploaded files)
-        ↓
-Importer (GitImporter | ZipImporter | FileImporter)
-        ↓
-ExtractedDocument[]  (CodeExtractor for trees; FileImporter direct)
-        ↓
-Persist / merge files → chunk → optional embed → record ProjectSource
-        ↓
-Search / Explain (JWT + ownership checks on every project route)
-```
-
----
-
-## UI workflow (today)
-
-```text
-Register or log in (/register, /login) → JWT stored client-side
-        ↓
-Project dashboard (header, + New Project, project card grid)
-        ↓
-Create or select a project (clickable project cards)
-        ↓
-Selected Project — Overview (stat cards for files, chunks, sources, etc.)
-        ↓
-Import Sources — Git Repository | ZIP Upload | Individual Files
-        ↓
-Browse discovered files in that project
-        ↓
-Search | Explain (tabbed workspace)
-        ↓
-Results (ranked hits or RAG answer + citations)
-```
-
-### Search (UI label)
-
-**Purpose:** Locate relevant files, documents, and code in the **active project**.
-
-**Backend:** `POST /api/v1/projects/{id}/search` (auth required; ownership enforced).
-
-### Explain (UI label)
-
-**Purpose:** Understand the project via AI answers tied to indexed content.
-
-**Backend:** `POST /api/v1/projects/{id}/ask` (auth required; ownership enforced).
-
----
-
-## Current MVP capabilities
-
-Requires Docker (or equivalent), PostgreSQL + pgvector, **`JWT_SECRET_KEY`**, backend **git** for clone, and OpenAI flags as documented.
-
-**Authentication & access**
-
-- **Register / login** — `POST /api/v1/auth/register`, `POST /api/v1/auth/login`
-- **JWT bearer** authentication; `GET /api/v1/auth/me`
-- Password hashing (**passlib + bcrypt**; **`bcrypt>=4.0.0,<4.1`** pinned for compatibility)
-- **Project ownership** — `projects.user_id`; users only see and mutate their projects
-- **Authorization tests** — cross-user access returns 404
-
-**Projects & sources**
-
-- **List / create / get** owned projects (`GET/POST /projects`, `GET /projects/{id}`) with embedded **`stats`** (file, chunk, source, embedding counts; `last_indexed_at`)
-- **`project_sources`** — records each Git, ZIP, or file import (`source_type`, `source_name`, optional `source_url`)
-- One project can accumulate **multiple imports** (e.g. Git repo + PDF + Markdown); file import **merges** by path; ZIP/Git **replace** project files for that ingest
-
-**Ingestion & browsing**
-
-- **ZIP** — `POST .../upload`
-- **Git URL** — validate, shallow clone, `POST .../import`
-- **Individual files** — `.md`, `.markdown`, `.txt`, text-based `.pdf` via `POST .../files/import`
-- **Source-agnostic pipeline** — `backend/app/ingestion/`
-- Discovery rules, `.gitignore`, browse in UI
-
-**Indexing, search, assistant**
-
-- Chunking from `ExtractedDocument`; optional embeddings (`EMBEDDING_ENABLED`, default off)
-- pgvector + HNSW; Search and Explain UIs
-
-**Frontend workspace**
-
-- **Responsive project dashboard** — header, **+ New Project**, project card grid
-- **Clickable project cards** — name, source badges or source count, live file/chunk/source stats, last updated, selected state
-- **Persistent Selected Project workspace** — overview with **live stats** from API, import, file browser, Search / Explain on one page
-- **Cleaner project-first workflow** — select project before import and assistant actions
-
-**Quality & tooling**
-
-- Backend tests (auth, authorization, project stats, ingestion, Git/file importers); **87 passed, 1 skipped**
-- Pytest ignores repo `.env` for deterministic feature flags
-- Frontend production build passes
-- Migration **`0005_users_and_project_ownership`**
-
----
-
-## HTTP API (reference)
-
-| Method | Path | Purpose |
-|--------|------|---------|
-| POST | `/api/v1/auth/register` | Create account (returns JWT) |
-| POST | `/api/v1/auth/login` | Log in (returns JWT) |
-| GET | `/api/v1/auth/me` | Current user (Bearer token) |
-| GET | `/api/v1/projects` | List current user's projects (includes `stats`) |
-| POST | `/api/v1/projects` | Create project (owned by user; includes `stats`) |
-| GET | `/api/v1/projects/{id}` | Get owned project (includes `stats`) |
-| POST | `/api/v1/projects/{id}/upload` | Upload ZIP |
-| POST | `/api/v1/projects/{id}/import` | Import Git URL |
-| POST | `/api/v1/projects/{id}/files/import` | Upload individual files (multipart) |
-| GET | `/api/v1/projects/{id}/files` | List files |
-| POST | `/api/v1/projects/{id}/search` | Semantic search |
-| POST | `/api/v1/projects/{id}/ask` | RAG explain |
-| GET | `/api/v1/health` | Health check |
-
-All **`/projects/*`** routes require **`Authorization: Bearer <token>`**.
-
-Search/ask still require **PostgreSQL + pgvector**, **`EMBEDDING_ENABLED`**, and for ask **`LLM_ENABLED`** + **`OPENAI_API_KEY`**. See [README.md](../README.md) and `.env.example`.
-
----
-
-## Current UI
-
-The main app (`/`) is a **project-centric workspace** styled as a modern developer tool (similar in spirit to GitHub, Linear, or Vercel dashboards).
-
-**Project dashboard**
-
-- App header with branding, signed-in user, and log out
-- **CodeContext** title and tagline
-- **+ New Project** inline create form
-- Responsive **project card grid** — click a card to set the active project (no routing change)
-
-**Project cards**
-
-- Project name, source-type badges (from session imports and active-project file types when loaded), live **file/chunk/source** counts from API, relative **updated** time, clear **selected** state
-
-**Selected Project workspace**
-
-- **Overview** — stat grid for Files, Chunks, Sources, Last indexed, Embeddings (live counts from **`stats`** on project list/get responses)
-- **Import Sources** — tabbed Git Repository, ZIP Upload, Individual Files (unchanged API behavior)
-- **Discovered files** — file browser after content is indexed
-- **Search / Explain** — tabbed assistant workspace below imports
-
-All assistant and import actions operate on the **currently selected project**.
-
----
-
-## Planned UI improvements
-
-Features **not** implemented yet. See also [Recommended next priorities](#recommended-next-priorities).
-
-### Project overview
-
-- Project health indicators
-- Dedicated embedding-enabled flag (stats report embedding **count**, not global config)
-
-### Project cards
-
-- Recent activity
-- Favorite / star project
-- Search / filter projects
-- Re-index status badges
-
-### Search
-
-- Highlight matched query terms
-- Better result previews
-- Click-to-open source file
-
-### Explain
-
-- Streaming AI responses
-- Copy answer button
-- Conversation history
-- Better citation display with line numbers
-
-### Import
-
-- Progress indicators
-- Background indexing
-- Re-index existing sources
-
-### Future
-
-- Repository graph
-- Dependency visualization
-- Shared projects
-- Team workspaces
-
----
-
-## Completed work (by phase)
-
-### Phase 1 — Repository Ingestion
-
-- ZIP, Git URL, individual file imports; ingestion refactor (`app/ingestion/`)
-- **Project sources** tracking; Docker **git** for clone
-
-### Phase 2 — Code Indexing
-
-- Chunks via `ExtractedDocument`; parsers; optional embeddings; migration `0004` HNSW
-
-### Phase 3 — Semantic Search
-
-- `search_similar_chunks`, search API, Search UI
-
-### Phase 4 — AI Code Assistant
-
-- LLM, RAG prompts, `assistant_service`, ask API, Explain UI, citation alignment
-
-### Platform — Authentication & project ownership
-
-- **`users`** table; **`projects.user_id`**; **`project_sources`**
-- JWT auth routes; protected project API; ownership in `project_service`
-- Frontend **`/login`**, **`/register`**, token storage, **project dashboard** (card grid, Selected Project workspace)
-- **Project stats** on list/get project API (`project_stats_service`); dashboard consumes live metrics
-- Migration **`0005_users_and_project_ownership`**
-- **bcrypt pin** (`bcrypt<4.1`) for passlib compatibility
-
-| Area | Path |
-|------|------|
-| Auth | `backend/app/api/routes/auth.py`, `backend/app/core/security.py`, `backend/app/services/auth_service.py` |
-| Ownership | `backend/app/services/project_service.py` |
-| Stats | `backend/app/services/project_stats_service.py` |
-| Sources | `backend/app/models/project_source.py`, `backend/app/services/project_source_service.py` |
-| Ingestion | `backend/app/ingestion/` |
-| Shell | `frontend/components/code-context-app.tsx`, `frontend/components/projects/`, `frontend/components/auth/auth-form.tsx` |
-
----
-
-## Current limitations
-
-**Product & access**
-
-- **No OAuth** / social login, orgs, teams, or roles
-- **No password reset** or email verification
-- **No deployment** guide for production hosting in-repo (Compose is for local/dev)
-- Legacy **`projects` rows with `user_id` NULL** (pre-migration) are not accessible via the API
+- JWT auth: register, login, `/auth/me`; bcrypt password hashing
+- Project ownership (`projects.user_id`); cross-user access blocked
+- Project CRUD with embedded stats (files, chunks, sources, embeddings, `last_indexed_at`)
+- `project_sources` audit rows for Git, ZIP, and file imports
 
 **Ingestion & indexing**
 
-- **Public Git HTTP(S) only** — no private remotes or tokens
-- **PDF** — text extraction only (no OCR); scanned PDFs may fail
-- **Re-index** without re-import not supported
-- **Synchronous** ingest (no background workers)
-- No dedicated **project health** UI; stats expose counts but not index coverage diagnostics
-- Card **source-type badges** are inferred client-side (session imports + loaded file types), not from a sources list API
-- **`stats`** does not expose whether **`EMBEDDING_ENABLED`** is on globally — only **`embedding_count`**
+- Git URL (public HTTP(S)), ZIP upload, individual file import (`.md`, `.txt`, text-based PDF)
+- Source-agnostic pipeline: importers → extractors → chunking → optional embeddings
+- File discovery with ignore rules; parsers for Python and Markdown
+- pgvector storage with HNSW index (migration `0004`)
+- Alembic migrations through `0005` (users, ownership, project sources)
 
-**Assistant UX**
+**Search & Explain**
 
-- **No streaming** responses
-- **No conversation history** / multi-turn threads
+- Semantic search: `POST /api/v1/projects/{id}/search`
+- Single-turn RAG explain: `POST /api/v1/projects/{id}/ask` with citations
+- Frontend tabs for Search and Explain in the selected-project workspace
 
-**Advanced platform**
+**Analysis agent**
 
-- Hybrid retrieval, re-ranking, repo maps, dependency graphs, analytics, public chunk API — **not built**
+- Read-only ReAct loop: `POST /api/v1/projects/{id}/agent/runs` (`AGENT_ENABLED`)
+- Four tools: `repository_search`, `list_project_files`, `read_file`, `get_project_stats`
+- Task templates (backend + UI): `architecture_review`, `implementation_planning`
+- Structured artifacts: `architecture_report`, `implementation_plan` (Pydantic validation + parser)
+- Frontend Agent tab: task template selector, goal input, tool trace, structured result views
+- Architecture report card UI; implementation plan UI with milestone cards
+- Per-milestone **Copy Cursor Prompt** (clipboard)
+- Raw answer markdown rendering; download as `.md` (raw `answer` field)
+- Placeholder (disabled) templates in UI: security review, explain auth, refactoring roadmap
+
+**Frontend workspace**
+
+- `/register`, `/login`; project dashboard with card grid
+- Selected-project view: overview stats, import tabs, file browser, Search / Explain / Agent tabs
+
+**Quality**
+
+- Backend: **148 passed, 1 skipped** (default pytest)
+- Frontend: `npm run build` passes
 
 ---
 
-## Recommended next priorities
+## Current Limitations
 
-### High priority
+**Agent**
 
-- **Deployment** — staging/production path (env, secrets, migrations, `JWT_SECRET_KEY`)
-- **Re-index workflow** — re-chunk / re-embed without full re-import; status in UI
+- Default **`AGENT_MAX_STEPS=10`**. Implementation planning on larger repos often needs more tool calls before producing the final JSON plan; runs fail with `AgentStepLimitError` (HTTP 503) when the step cap is hit before completion.
+- Stateless runs — no DB persistence or run history
+- No streaming; synchronous request/response only
+- Read-only tools only — no writes, shell, git ops, or dependency graph
+- `findings_report` and `roadmap_report` schemas exist but have no active templates or UI
+- Download exports raw LLM `answer`, not artifact-derived markdown for implementation plans
 
-### Medium priority
+**Search & Explain**
 
-- **Private Git** — tokens / SSH for private remotes
-- **Streaming** Explain responses
-- **Conversation history**
-- **Retrieval tuning** and embedding/index status in UI
+- Single-shot search and single-turn RAG — no conversation history
+- No streaming responses
+- Requires `EMBEDDING_ENABLED` (+ OpenAI key, pgvector); Explain also requires `LLM_ENABLED`
 
-### Future (Phase 5+)
+**Ingestion & platform**
 
-- Repository maps and navigation
-- Dependency insights
+- Public Git only — no private repo credentials or SSH
+- No re-index without re-import; indexing is synchronous (no background workers)
+- PDF: text extraction only (no OCR)
+- No OAuth, password reset, email verification, teams, or shared projects
+- No production deployment guide in-repo
+- Legacy projects with `user_id` NULL are inaccessible via API
+- Project card source badges inferred client-side, not from a dedicated sources API
+
+---
+
+## Architecture
+
+```text
+User (JWT)
+  └── Project
+        ├── ProjectSource[]  (git | zip | file)
+        ├── File[]
+        └── CodeChunk[] → optional embeddings (pgvector)
+              ├── Search     (vector retrieval)
+              ├── Explain    (retrieve once → RAG completion)
+              └── Agent      (multi-step tool loop → structured artifact)
+```
+
+| Layer | Stack |
+|-------|--------|
+| Frontend | Next.js (App Router), TypeScript, Tailwind |
+| Backend | FastAPI, SQLAlchemy async, Alembic, Pydantic |
+| Database | PostgreSQL 16 + pgvector (HNSW) |
+| AI | OpenAI embeddings + chat completions; native tool calling for agent (no LangChain) |
+
+**Key backend paths**
+
+- Ingestion: `backend/app/ingestion/`
+- Indexing: `backend/app/indexing/`
+- Retrieval / RAG: `backend/app/retrieval/`, `backend/app/services/assistant_service.py`
+- Agent: `backend/app/agent/runner.py`, `backend/app/services/agent_service.py`, `backend/app/agent/tools/`
+- Artifacts: `backend/app/agent/structured_output.py`, `artifact_parser.py`
+- Templates: `backend/app/prompts/agent_task_templates.py`, `agent_system.py`
+
+**Key frontend paths**
+
+- Shell: `frontend/components/code-context-app.tsx`
+- Agent: `frontend/components/agent/`
+- API client: `frontend/lib/api.ts`
+
+---
+
+## Future Work
+
+### Agent reliability & capability
+
+- Raise or make step limits configurable per template (especially `implementation_planning`)
+- Graceful handling when step limit is reached mid-run (partial results, clearer UI error)
+- Additional task templates: security review, findings report, refactoring roadmap
+- New read-only tools: symbol lookup, dependency/change-impact analysis
+- Agent run persistence and history
+- Artifact-driven markdown export for implementation plans
+
+### Search, Explain & retrieval
+
+- Streaming responses for Explain and Agent
+- Multi-turn conversation / thread history
+- Hybrid retrieval, re-ranking, retrieval tuning
+- Search UX: query highlighting, richer previews, click-to-open source file
+- Explain UX: citation line numbers, copy answer
+
+### Ingestion & scalability
+
+- Re-index / re-embed workflow without full re-import
 - Background workers for large projects
-- Hybrid retrieval at scale
+- Private Git credentials (tokens / SSH)
+- Import progress and re-index status in UI
+- Broader parser coverage; import/symbol graph
+
+### Platform & operations
+
+- Production deployment path (env, secrets, migrations, `JWT_SECRET_KEY`)
+- Password reset, OAuth (optional)
+- Teams, shared projects, roles
+- Repository map / dependency visualization
+
+### Developer workflow & UX
+
+- Project dashboard: search/filter, favorites, recent activity
+- Index health indicators (embedding coverage, config visibility in stats)
+- Dedicated sources list API for accurate project card badges
 
 ---
 
-## Development notes
+## Current Status
 
-### Run locally
+**What works today:** End-to-end local MVP — auth, owned projects, multi-source import, indexing, semantic search, RAG explain, and a read-only analysis agent with architecture review and implementation planning. Structured results render in the Agent tab; implementation plan milestones include copy-to-clipboard Cursor prompts.
+
+**MVP state:** Multi-user local/demo system. Not production-hardened. Feature flags (`EMBEDDING_ENABLED`, `LLM_ENABLED`, `AGENT_ENABLED`) gate AI capabilities.
+
+**Main remaining development:** Agent step-limit reliability for implementation planning on non-trivial repos, platform hardening (deploy, re-index, private Git), and UX/scale improvements (streaming, history, background indexing, additional agent templates and tools).
+
+---
+
+## Local development
 
 ```bash
 docker compose up --build
 ```
 
-- Frontend: http://localhost:3000  
-- Backend: http://localhost:8000 (`/api/v1/health`)  
-- Run **`alembic upgrade head`** (includes **0005**) before use  
-- Set **`JWT_SECRET_KEY`** in `.env` (see `.env.example`)  
-- Rebuild backend after **`requirements.txt`** or Dockerfile changes  
-
-### Migrations
-
-`0001` projects/files → `0002` chunks → `0003` symbol + embedding → `0004` HNSW → **`0005` users, project ownership, project_sources**.
-
-Legacy DBs from `init_db()` only: stamp through current head per existing docs, then `alembic upgrade head`.
-
-### Tests
+- Frontend: http://localhost:3000
+- Backend: http://localhost:8000 (`/api/v1/health`)
+- Copy `.env.example` → `.env`; set `JWT_SECRET_KEY`, `OPENAI_API_KEY`, and enable flags as needed
+- Run migrations: `alembic upgrade head` (includes `0005`)
 
 ```bash
-cd backend && python -m pytest -q    # 87 passed, 1 skipped (default)
+cd backend && python -m pytest -q    # 148 passed, 1 skipped
 cd frontend && npm run build
 ```
-
-Postgres integration: `CODECONTEXT_INTEGRATION_DATABASE_URL=... pytest -m integration`
-
----
-
-*When Phase 5 or major platform work ships, update **Phase overview**, **Completed work**, **Current MVP capabilities**, **Current UI**, and **Recommended next priorities**.*
