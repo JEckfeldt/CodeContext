@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-TASK_TEMPLATE_NAMES = frozenset({"architecture_review"})
+TASK_TEMPLATE_NAMES = frozenset({"architecture_review", "implementation_planning"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,6 +39,20 @@ TASK_TEMPLATES: dict[str, TaskTemplate] = {
             "citations."
         ),
         output_format="architecture_report",
+    ),
+    "implementation_planning": TaskTemplate(
+        name="implementation_planning",
+        description=(
+            "Create an ordered implementation plan for a requested feature or change."
+        ),
+        goal_instruction=(
+            "Create an implementation plan for the user's feature goal. Before planning, "
+            "analyze the existing repository using available tools (get_project_stats, "
+            "list_project_files, repository_search, read_file) to understand relevant "
+            "files, patterns, and constraints. Ground the plan in verified repository "
+            "evidence. Produce milestones that an IDE coding agent can execute one at a time."
+        ),
+        output_format="implementation_plan",
     ),
 }
 

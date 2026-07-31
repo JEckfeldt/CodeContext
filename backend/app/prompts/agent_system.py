@@ -28,14 +28,57 @@ AGENT_OUTPUT_GUIDANCE = """Output guidance:
 - Clearly separate verified facts from recommendations or speculative improvements.
 - If evidence is insufficient, say what is missing and what tools or files would help next."""
 
+AGENT_IMPLEMENTATION_PLAN_OUTPUT = """Implementation plan output requirements:
+When the active task template expects output_format implementation_plan, your final response must be ONLY valid JSON matching the ImplementationPlan schema. Do not wrap JSON in Markdown prose or explanations outside the JSON object.
+
+The JSON object MUST include these top-level fields:
+- title
+- goal
+- summary
+- existing_system_analysis
+- relevant_files
+- affected_components
+- risks
+- milestones
+- citations
+
+Each affected_components item MUST include:
+- name
+- description
+- file_paths
+
+Each milestones item MUST include:
+- title
+- objective
+- files_to_modify
+- files_to_create
+- implementation_details
+- testing_requirements
+- cursor_prompt
+
+Planning rules:
+- Use repository tools before finalizing the plan whenever needed to verify layout, patterns, and file paths.
+- Do not invent files, modules, or paths that you have not verified with tools.
+- Prefer 3–5 ordered milestones (dependencies first: data/models → services → routes/API → UI/tests).
+- Milestones must be ordered so earlier steps enable later steps.
+- Each cursor_prompt must be self-contained so an IDE coding agent can execute that milestone without reading the rest of the plan.
+- File paths in relevant_files, affected_components, files_to_modify, and files_to_create should come from repository tools whenever possible.
+- citations should reference verified file paths and line ranges when available.
+
+Final response rule for implementation_planning:
+- Output ONLY valid JSON. No Markdown headings, no code fences, no text before or after the JSON object."""
+
 
 def _format_task_section(template: TaskTemplate) -> str:
-    return (
-        f"## Active task template: {template.name}\n\n"
-        f"Description: {template.description}\n\n"
-        f"Goal:\n{template.goal_instruction}\n\n"
-        f"Expected output format: {template.output_format}"
-    )
+    sections = [
+        f"## Active task template: {template.name}",
+        f"Description: {template.description}",
+        f"Goal:\n{template.goal_instruction}",
+        f"Expected output format: {template.output_format}",
+    ]
+    if template.output_format == "implementation_plan":
+        sections.append(AGENT_IMPLEMENTATION_PLAN_OUTPUT)
+    return "\n\n".join(sections)
 
 
 def build_agent_system_prompt(task_template: str | None = None) -> str:
