@@ -14,6 +14,7 @@ class ArtifactType(StrEnum):
     ARCHITECTURE_REPORT = "architecture_report"
     FINDINGS_REPORT = "findings_report"
     ROADMAP_REPORT = "roadmap_report"
+    IMPLEMENTATION_PLAN = "implementation_plan"
 
 
 class UnknownArtifactTypeError(KeyError):
@@ -84,10 +85,45 @@ class RoadmapReport(BaseModel):
     items: list[RoadmapItem] = Field(default_factory=list)
 
 
+class ImplementationMilestone(BaseModel):
+    """Ordered milestone in an implementation plan."""
+
+    title: str = Field(min_length=1)
+    objective: str = Field(min_length=1)
+    files_to_modify: list[str] = Field(default_factory=list)
+    files_to_create: list[str] = Field(default_factory=list)
+    implementation_details: str = Field(min_length=1)
+    testing_requirements: list[str] = Field(default_factory=list)
+    cursor_prompt: str = Field(min_length=1)
+
+
+class AffectedComponent(BaseModel):
+    """Named component affected by an implementation plan."""
+
+    name: str = Field(min_length=1)
+    description: str = Field(min_length=1)
+    file_paths: list[str] = Field(default_factory=list)
+
+
+class ImplementationPlan(BaseModel):
+    """Structured implementation plan for IDE-agent execution."""
+
+    title: str = Field(min_length=1)
+    goal: str = Field(min_length=1)
+    summary: str = Field(min_length=1)
+    existing_system_analysis: str = Field(min_length=1)
+    relevant_files: list[str] = Field(default_factory=list)
+    affected_components: list[AffectedComponent] = Field(default_factory=list)
+    milestones: list[ImplementationMilestone] = Field(min_length=1)
+    risks: list[str] = Field(default_factory=list)
+    citations: list[ArtifactCitation] = Field(default_factory=list)
+
+
 ARTIFACT_SCHEMAS: dict[ArtifactType, Type[BaseModel]] = {
     ArtifactType.ARCHITECTURE_REPORT: ArchitectureReport,
     ArtifactType.FINDINGS_REPORT: FindingsReport,
     ArtifactType.ROADMAP_REPORT: RoadmapReport,
+    ArtifactType.IMPLEMENTATION_PLAN: ImplementationPlan,
 }
 
 

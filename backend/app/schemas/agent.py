@@ -11,6 +11,7 @@ from app.agent.structured_output import (
     ArchitectureReport,
     ArtifactType,
     FindingsReport,
+    ImplementationPlan,
     RoadmapReport,
     validate_artifact,
 )
@@ -56,7 +57,7 @@ class AgentRunResponse(BaseModel):
     steps_taken: int
     tool_calls: list[ToolCallTraceRead] = Field(default_factory=list)
     artifact_type: ArtifactType | None = None
-    artifact: ArchitectureReport | FindingsReport | RoadmapReport | None = None
+    artifact: ArchitectureReport | FindingsReport | RoadmapReport | ImplementationPlan | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -79,7 +80,7 @@ class AgentRunResponse(BaseModel):
         ]
 
         artifact_type: ArtifactType | None = None
-        artifact: ArchitectureReport | FindingsReport | RoadmapReport | None = None
+        artifact: ArchitectureReport | FindingsReport | RoadmapReport | ImplementationPlan | None = None
         if result.artifact_type is not None and result.artifact is not None:
             artifact_type = ArtifactType(result.artifact_type)
             if isinstance(result.artifact, BaseModel):

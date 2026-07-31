@@ -8,6 +8,7 @@ from app.agent.structured_output import (
     ArtifactType,
     Finding,
     FindingsReport,
+    ImplementationPlan,
     RoadmapItem,
     RoadmapReport,
     UnknownArtifactTypeError,
@@ -92,6 +93,7 @@ def test_artifact_type_lookup_works() -> None:
     assert get_artifact_schema(ArtifactType.ARCHITECTURE_REPORT) is ArchitectureReport
     assert get_artifact_schema("findings_report") is FindingsReport
     assert get_artifact_schema("roadmap_report") is RoadmapReport
+    assert get_artifact_schema("implementation_plan") is ImplementationPlan
 
     validated = validate_artifact(
         "architecture_report",
