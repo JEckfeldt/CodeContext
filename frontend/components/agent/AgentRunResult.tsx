@@ -1,10 +1,15 @@
 "use client";
 
 import { DownloadMarkdownButton } from "@/components/agent/DownloadMarkdownButton";
+import { ImplementationPlanView } from "@/components/agent/ImplementationPlanView";
 import { MarkdownRenderer } from "@/components/agent/MarkdownRenderer";
 import { ToolTrace } from "@/components/agent/ToolTrace";
 import { Badge } from "@/components/ui/badge";
-import type { AgentRunResponse, ArchitectureReportArtifact } from "@/types";
+import type {
+  AgentRunResponse,
+  ArchitectureReportArtifact,
+  ImplementationPlanArtifact,
+} from "@/types";
 
 type AgentRunResultProps = {
   result: AgentRunResponse;
@@ -20,6 +25,18 @@ function isArchitectureReport(
     typeof artifact === "object" &&
     "components" in artifact &&
     Array.isArray(artifact.components)
+  );
+}
+
+function isImplementationPlanArtifact(
+  artifact: AgentRunResponse["artifact"],
+): artifact is ImplementationPlanArtifact {
+  return (
+    artifact !== null &&
+    artifact !== undefined &&
+    typeof artifact === "object" &&
+    "milestones" in artifact &&
+    Array.isArray(artifact.milestones)
   );
 }
 
@@ -67,8 +84,15 @@ export function AgentRunResult({ result, submittedGoal }: AgentRunResultProps) {
       ? result.artifact
       : null;
 
+  const implementationPlan =
+    result.artifact_type === "implementation_plan" &&
+    isImplementationPlanArtifact(result.artifact)
+      ? result.artifact
+      : null;
+
   const markdownContent = result.answer?.trim() ?? "";
   const hasMarkdown = markdownContent.length > 0;
+  const showAnswerSection = !implementationPlan;
 
   return (
     <div className="space-y-4">
@@ -83,22 +107,26 @@ export function AgentRunResult({ result, submittedGoal }: AgentRunResultProps) {
         <ArchitectureReportView artifact={architectureArtifact} />
       ) : null}
 
-      <div className="rounded-md border border-border-subtle bg-surface px-4 py-4">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <p className="text-sm font-medium text-foreground">Answer</p>
+      {implementationPlan ? <ImplementationPlanView plan={implementationPlan} /> : null}
+
+      {showAnswerSection ? (
+        <div className="rounded-md border border-border-subtle bg-surface px-4 py-4">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-medium text-foreground">Answer</p>
+            {hasMarkdown ? (
+              <DownloadMarkdownButton
+                markdown={markdownContent}
+                filename={getDownloadFilename(result)}
+              />
+            ) : null}
+          </div>
           {hasMarkdown ? (
-            <DownloadMarkdownButton
-              markdown={markdownContent}
-              filename={getDownloadFilename(result)}
-            />
-          ) : null}
+            <MarkdownRenderer markdown={markdownContent} />
+          ) : (
+            <p className="text-sm text-muted">No answer content was returned.</p>
+          )}
         </div>
-        {hasMarkdown ? (
-          <MarkdownRenderer markdown={markdownContent} />
-        ) : (
-          <p className="text-sm text-muted">No answer content was returned.</p>
-        )}
-      </div>
+      ) : null}
 
       <ToolTrace toolCalls={result.tool_calls} />
     </div>
